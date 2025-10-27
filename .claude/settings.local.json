@@ -12,7 +12,12 @@
       "Bash(node src/server.js:*)",
       "Bash(node src/database/run-migration.js:*)",
       "Bash(npm start)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(node:*)",
+      "Bash(del INSTALL.md README.md QUICK_START.md)",
+      "Bash(taskkill:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

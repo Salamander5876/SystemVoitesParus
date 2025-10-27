@@ -68,11 +68,11 @@ class Shift {
         if (!shift) return null;
 
         const candidatesStmt = db.prepare(`
-            SELECT id, name, description, votes_for, votes_against,
-                   (votes_for + votes_against) as total_votes
+            SELECT id, name, description, vote_count,
+                   vote_count as total_votes
             FROM candidates
             WHERE shift_id = ? AND is_active = 1
-            ORDER BY total_votes DESC
+            ORDER BY vote_count DESC
         `);
         const candidates = candidatesStmt.all(id);
 
@@ -84,9 +84,50 @@ class Shift {
         `);
         const stats = totalVotesStmt.get(id);
 
+        // Получаем количество специальных голосов
+        const specialVotesStmt = db.prepare(`
+            SELECT
+                vote_type,
+                COUNT(*) as count
+            FROM votes
+            WHERE shift_id = ? AND vote_type IN ('against_all', 'abstain')
+            GROUP BY vote_type
+        `);
+        const specialVotesResults = specialVotesStmt.all(id);
+
+        const specialVotes = {
+            against_all: 0,
+            abstain: 0
+        };
+
+        specialVotesResults.forEach(row => {
+            specialVotes[row.vote_type] = row.count;
+        });
+
+        // Добавляем специальные варианты в список кандидатов для отображения
+        const allCandidates = [
+            ...candidates,
+            {
+                id: null,
+                name: 'Против всех',
+                description: 'Голосов против всех кандидатов',
+                vote_count: specialVotes.against_all,
+                total_votes: specialVotes.against_all,
+                is_special: true
+            },
+            {
+                id: null,
+                name: 'Воздержался',
+                description: 'Воздержались от голосования',
+                vote_count: specialVotes.abstain,
+                total_votes: specialVotes.abstain,
+                is_special: true
+            }
+        ];
+
         return {
             ...shift,
-            candidates,
+            candidates: allCandidates,
             stats
         };
     }

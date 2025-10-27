@@ -26,11 +26,11 @@ class Candidate {
         return stmt.get(id);
     }
 
-    static create(shiftId, name, description = null, photoUrl = null) {
+    static create(shiftId, name, description = null) {
         const stmt = db.prepare(
-            'INSERT INTO candidates (shift_id, name, description, photo_url) VALUES (?, ?, ?, ?)'
+            'INSERT INTO candidates (shift_id, name, description) VALUES (?, ?, ?)'
         );
-        const result = stmt.run(shiftId, name, description, photoUrl);
+        const result = stmt.run(shiftId, name, description);
         return result.lastInsertRowid;
     }
 
@@ -45,10 +45,6 @@ class Candidate {
         if (data.description !== undefined) {
             fields.push('description = ?');
             values.push(data.description);
-        }
-        if (data.photoUrl !== undefined) {
-            fields.push('photo_url = ?');
-            values.push(data.photoUrl);
         }
         if (data.isActive !== undefined) {
             fields.push('is_active = ?');

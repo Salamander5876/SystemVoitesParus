@@ -143,10 +143,7 @@ function renderCandidates(candidates) {
         const card = document.createElement('div');
         card.className = 'candidate-card';
 
-        const totalVotes = candidate.votes_for + candidate.votes_against;
-        const approvalRating = totalVotes > 0
-            ? Math.round((candidate.votes_for / totalVotes) * 100)
-            : 0;
+        const totalVotes = candidate.vote_count || 0;
 
         card.innerHTML = `
             <div class="candidate-header">
@@ -154,22 +151,9 @@ function renderCandidates(candidates) {
             </div>
             ${candidate.description ? `<p style="color: #666; margin-bottom: 15px;">${candidate.description}</p>` : ''}
             <div class="candidate-stats">
-                <div class="stat-item for">
-                    <div class="stat-item-label">ЗА</div>
-                    <div class="stat-item-value">${candidate.votes_for}</div>
-                </div>
-                <div class="stat-item against">
-                    <div class="stat-item-label">ПРОТИВ</div>
-                    <div class="stat-item-value">${candidate.votes_against}</div>
-                </div>
                 <div class="stat-item">
-                    <div class="stat-item-label">Всего</div>
-                    <div class="stat-item-value">${totalVotes}</div>
-                </div>
-            </div>
-            <div class="approval-bar">
-                <div class="approval-fill" style="width: ${approvalRating}%">
-                    ${approvalRating}% одобрения
+                    <div class="stat-item-label">Голосов</div>
+                    <div class="stat-item-value" style="font-size: 32px; color: #3498db;">${totalVotes}</div>
                 </div>
             </div>
         `;
@@ -187,8 +171,7 @@ function renderChart(candidates) {
     }
 
     const labels = candidates.map(c => c.name);
-    const votesFor = candidates.map(c => c.votes_for);
-    const votesAgainst = candidates.map(c => c.votes_against);
+    const voteCounts = candidates.map(c => c.vote_count || 0);
 
     resultsChart = new Chart(ctx, {
         type: 'bar',
@@ -196,17 +179,10 @@ function renderChart(candidates) {
             labels: labels,
             datasets: [
                 {
-                    label: 'ЗА',
-                    data: votesFor,
-                    backgroundColor: 'rgba(46, 204, 113, 0.8)',
-                    borderColor: 'rgba(46, 204, 113, 1)',
-                    borderWidth: 2
-                },
-                {
-                    label: 'ПРОТИВ',
-                    data: votesAgainst,
-                    backgroundColor: 'rgba(231, 76, 60, 0.8)',
-                    borderColor: 'rgba(231, 76, 60, 1)',
+                    label: 'Голосов',
+                    data: voteCounts,
+                    backgroundColor: 'rgba(52, 152, 219, 0.8)',
+                    borderColor: 'rgba(52, 152, 219, 1)',
                     borderWidth: 2
                 }
             ]

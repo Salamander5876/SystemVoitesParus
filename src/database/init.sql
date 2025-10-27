@@ -15,7 +15,6 @@ CREATE TABLE IF NOT EXISTS candidates (
     shift_id INTEGER NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
-    photo_url TEXT,
     vote_count INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT 1,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

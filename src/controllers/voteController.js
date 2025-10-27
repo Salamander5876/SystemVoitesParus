@@ -93,9 +93,18 @@ class VoteController {
 
             // Отправляем WebSocket событие (если io доступен)
             if (req.app.get('io')) {
+                let candidateName = 'Неизвестно';
+                if (voteType === 'candidate' && result.candidate) {
+                    candidateName = result.candidate.name;
+                } else if (voteType === 'against_all') {
+                    candidateName = 'Против всех';
+                } else if (voteType === 'abstain') {
+                    candidateName = 'Воздержался';
+                }
+
                 req.app.get('io').emit('new_vote', {
                     nickname: result.user.nickname,
-                    candidateName: result.candidate.name,
+                    candidateName: candidateName,
                     shiftName: result.shift.name,
                     voteType,
                     timestamp: new Date()

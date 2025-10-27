@@ -11,11 +11,15 @@ class Vote {
                 u.nickname,
                 u.vk_id,
                 u.full_name,
-                c.name as candidate_name,
+                CASE
+                    WHEN v.vote_type = 'against_all' THEN 'Против всех'
+                    WHEN v.vote_type = 'abstain' THEN 'Воздержался'
+                    ELSE c.name
+                END as candidate_name,
                 s.name as shift_name
             FROM votes v
             JOIN users u ON v.user_id = u.id
-            JOIN candidates c ON v.candidate_id = c.id
+            LEFT JOIN candidates c ON v.candidate_id = c.id
             JOIN shifts s ON v.shift_id = s.id
             ORDER BY v.created_at DESC
         `);
@@ -29,10 +33,14 @@ class Vote {
                 v.vote_type,
                 v.created_at,
                 u.nickname,
-                c.name as candidate_name
+                CASE
+                    WHEN v.vote_type = 'against_all' THEN 'Против всех'
+                    WHEN v.vote_type = 'abstain' THEN 'Воздержался'
+                    ELSE c.name
+                END as candidate_name
             FROM votes v
             JOIN users u ON v.user_id = u.id
-            JOIN candidates c ON v.candidate_id = c.id
+            LEFT JOIN candidates c ON v.candidate_id = c.id
             WHERE v.shift_id = ?
             ORDER BY v.created_at DESC
         `);
@@ -46,10 +54,14 @@ class Vote {
                 v.vote_type,
                 v.created_at,
                 u.nickname,
-                c.name as candidate_name
+                CASE
+                    WHEN v.vote_type = 'against_all' THEN 'Против всех'
+                    WHEN v.vote_type = 'abstain' THEN 'Воздержался'
+                    ELSE c.name
+                END as candidate_name
             FROM votes v
             JOIN users u ON v.user_id = u.id
-            JOIN candidates c ON v.candidate_id = c.id
+            LEFT JOIN candidates c ON v.candidate_id = c.id
             WHERE v.shift_id = ?
             ORDER BY v.created_at DESC
             LIMIT ?
@@ -118,14 +130,36 @@ class Vote {
             SELECT
                 c.id,
                 c.name,
-                c.votes_for,
-                c.votes_against,
-                (c.votes_for + c.votes_against) as total_votes
+                c.vote_count,
+                c.vote_count as total_votes
             FROM candidates c
             WHERE c.shift_id = ? AND c.is_active = 1
-            ORDER BY total_votes DESC
+            ORDER BY vote_count DESC
         `);
         return stmt.all(shiftId);
+    }
+
+    static getSpecialVotesCounts(shiftId) {
+        const stmt = db.prepare(`
+            SELECT
+                vote_type,
+                COUNT(*) as count
+            FROM votes
+            WHERE shift_id = ? AND vote_type IN ('against_all', 'abstain')
+            GROUP BY vote_type
+        `);
+        const results = stmt.all(shiftId);
+
+        const counts = {
+            against_all: 0,
+            abstain: 0
+        };
+
+        results.forEach(row => {
+            counts[row.vote_type] = row.count;
+        });
+
+        return counts;
     }
 
     static verifyVoteHash(voteId, expectedHash) {

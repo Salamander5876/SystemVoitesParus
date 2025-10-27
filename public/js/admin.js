@@ -376,8 +376,7 @@ document.getElementById('candidate-form').addEventListener('submit', async (e) =
     const data = {
         shiftId: parseInt(formData.get('shiftId')),
         name: formData.get('name'),
-        description: formData.get('description'),
-        photoUrl: formData.get('photoUrl')
+        description: formData.get('description')
     };
 
     try {

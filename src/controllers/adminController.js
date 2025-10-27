@@ -116,14 +116,6 @@ class AdminController {
 
             const shiftId = Shift.create(name, description, startDate, endDate);
 
-            // Автоматически создаем специальные варианты
-            try {
-                Candidate.create(shiftId, 'Против всех', 'Голос против всех кандидатов', null);
-                Candidate.create(shiftId, 'Воздержаться', 'Воздержаться от голосования', null);
-            } catch (candidateError) {
-                logger.warn('Failed to create default options for shift:', candidateError);
-            }
-
             Admin.logAction(req.admin.id, 'SHIFT_CREATED', `ID: ${shiftId}, Name: ${name}`, req.ip);
 
             res.status(201).json({
@@ -181,13 +173,13 @@ class AdminController {
     // Создать кандидата
     static createCandidate(req, res, next) {
         try {
-            const { shiftId, name, description, photoUrl } = req.body;
+            const { shiftId, name, description } = req.body;
 
             if (!shiftId || !name) {
                 return res.status(400).json({ error: 'Необходимы shiftId и name' });
             }
 
-            const candidateId = Candidate.create(shiftId, name, description, photoUrl);
+            const candidateId = Candidate.create(shiftId, name, description);
             Admin.logAction(req.admin.id, 'CANDIDATE_CREATED', `ID: ${candidateId}, Name: ${name}`, req.ip);
 
             res.status(201).json({

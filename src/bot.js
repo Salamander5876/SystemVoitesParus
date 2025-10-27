@@ -232,12 +232,20 @@ vk.updates.on('message_new', async (context) => {
                 if (!shift) return context.send('Неверная смена');
                 const candidates = await getCandidates(shift.id);
                 if (candidates.length === 0) return context.send('Нет кандидатов');
+
+                // Добавляем специальные варианты голосования
+                const allOptions = [
+                    ...candidates,
+                    { id: null, name: 'Против всех', is_special: true },
+                    { id: null, name: 'Воздержаться', is_special: true }
+                ];
+
                 updateUserState(userId, USER_STATES.AWAITING_CANDIDATE, {
                     shiftId: shift.id,
                     shiftName: shift.name
                 });
                 const kbCand = Keyboard.builder();
-                candidates.forEach(c => kbCand.textButton({ label: c.name }).row());
+                allOptions.forEach(c => kbCand.textButton({ label: c.name }).row());
                 kbCand.textButton({ label: BUTTONS.BACK, color: Keyboard.SECONDARY_COLOR });
                 return context.send(MESSAGES.CHOOSE_CANDIDATE, { keyboard: kbCand });
 
@@ -246,24 +254,39 @@ vk.updates.on('message_new', async (context) => {
                     updateUserState(userId, USER_STATES.AWAITING_NICKNAME);
                     return;
                 }
+
+                // Получаем список всех вариантов (кандидаты + специальные)
                 const cands = await getCandidates(state.data.shiftId);
-                const cand = cands.find(c => c.name === text);
-                if (!cand) return context.send('Неверный вариант');
+                const specialOptions = [
+                    { id: null, name: 'Против всех' },
+                    { id: null, name: 'Воздержаться' }
+                ];
+                const allVoteOptions = [...cands, ...specialOptions];
+
+                const selectedOption = allVoteOptions.find(c => c.name === text);
+                if (!selectedOption) return context.send('Неверный вариант');
 
                 // Определяем тип голоса
                 let voteType = 'candidate';
-                if (cand.name === 'Против всех') voteType = 'against_all';
-                else if (cand.name === 'Воздержаться') voteType = 'abstain';
+                let candidateId = selectedOption.id;
+
+                if (text === 'Против всех') {
+                    voteType = 'against_all';
+                    candidateId = null;
+                } else if (text === 'Воздержаться') {
+                    voteType = 'abstain';
+                    candidateId = null;
+                }
 
                 updateUserState(userId, USER_STATES.AWAITING_CONFIRMATION, {
-                    candidateId: voteType === 'candidate' ? cand.id : null,
-                    candidateName: cand.name,
+                    candidateId: candidateId,
+                    candidateName: text,
                     voteType: voteType
                 });
 
                 let confirmMsg = `Подтвердите ваш выбор:\n\n`;
                 confirmMsg += `Смена: ${state.data.shiftName}\n`;
-                confirmMsg += `Ваш голос: ${cand.name}`;
+                confirmMsg += `Ваш голос: ${text}`;
 
                 return context.send(confirmMsg, {
                     keyboard: Keyboard.builder()
