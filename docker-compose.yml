@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voting-parus-app
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - VK_TOKEN=${VK_TOKEN}
+      - VK_GROUP_ID=${VK_GROUP_ID}
+      - VK_CONFIRMATION=${VK_CONFIRMATION}
+      - VK_SECRET=${VK_SECRET}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-3600}
+      - VOTE_SALT=${VOTE_SALT}
+      - SESSION_SECRET=${SESSION_SECRET}
+      - DB_PATH=/app/database/voting.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - CORS_ORIGIN=${CORS_ORIGIN:-*}
+    volumes:
+      - ./src/database:/app/database
+      - ./logs:/app/logs
+      - ./backups:/app/backups
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - voting-network
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: voting-parus-bot
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - VK_TOKEN=${VK_TOKEN}
+      - VK_GROUP_ID=${VK_GROUP_ID}
+      - VK_CONFIRMATION=${VK_CONFIRMATION}
+      - VK_SECRET=${VK_SECRET}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    command: ["node", "src/bot.js"]
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - voting-network
+
+  backup:
+    image: alpine:latest
+    container_name: voting-parus-backup
+    volumes:
+      - ./src/database:/database:ro
+      - ./backups:/backups
+    command: >
+      sh -c "while true; do
+        echo 'Creating backup...';
+        cp /database/voting.db /backups/voting_$$(date +%Y%m%d_%H%M%S).db 2>/dev/null || true;
+        echo 'Cleaning old backups...';
+        find /backups -name 'voting_*.db' -mtime +7 -delete;
+        echo 'Backup done. Sleeping for 1 hour...';
+        sleep 3600;
+      done"
+    restart: unless-stopped
+    networks:
+      - voting-network
+
+networks:
+  voting-network:
+    driver: bridge
+
+volumes:
+  database:
+  logs:
+  backups:

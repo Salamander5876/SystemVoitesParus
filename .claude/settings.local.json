@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del srcbot.js)",
+      "Bash(npm install)",
+      "Bash(npm run init-db:*)",
+      "Bash(node src/bot.js:*)",
+      "Bash(npm install:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(start.bat)",
+      "Bash(cmd /c start.bat)",
+      "Bash(node src/server.js:*)",
+      "Bash(node src/database/run-migration.js:*)",
+      "Bash(npm start)",
+      "Bash(dir:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

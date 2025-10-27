@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Голосование - Лагерь Парус</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1>Выборы старшего вожатого</h1>
+            <h2>Лагерь "Парус" 2025</h2>
+            <div class="status-bar">
+                <div id="voting-status" class="status">Загрузка...</div>
+            </div>
+        </header>
+
+        <div class="shift-selector">
+            <h3>Выберите смену:</h3>
+            <div id="shift-buttons" class="shift-buttons">
+                <!-- Кнопки смен будут добавлены динамически -->
+            </div>
+        </div>
+
+        <main class="main-content">
+            <section class="stats-section">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Всего голосов</div>
+                        <div id="total-votes" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Проголосовало</div>
+                        <div id="unique-voters" class="stat-value">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="results-section">
+                <h3>Результаты голосования</h3>
+                <div id="no-shift" class="no-data">
+                    Выберите смену для просмотра результатов
+                </div>
+                <div id="candidates-list" class="candidates-list" style="display: none;">
+                    <!-- Список кандидатов будет добавлен динамически -->
+                </div>
+                <div class="chart-container" style="display: none;">
+                    <canvas id="results-chart"></canvas>
+                </div>
+            </section>
+
+            <section class="activity-section">
+                <h3>Последние голоса</h3>
+                <div id="recent-votes" class="recent-votes">
+                    <div class="no-data">Голосов пока нет</div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>&copy; 2025 Лагерь "Парус". Система голосования.</p>
+            <a href="/admin">Административная панель</a>
+        </footer>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
