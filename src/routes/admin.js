@@ -12,6 +12,8 @@ router.use(authMiddleware);
 
 // Управление голосованием
 router.post('/voting/control', AdminController.controlVoting);
+router.post('/voting/publish-results', AdminController.publishResults);
+router.post('/voting/unpublish-results', AdminController.unpublishResults);
 
 // Управление сменами
 router.get('/shifts', AdminController.getAllShifts);

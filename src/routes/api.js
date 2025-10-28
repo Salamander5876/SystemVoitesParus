@@ -37,4 +37,7 @@ router.get('/users/:vkId/stats', VoteController.getUserStats);
 // Публичный журнал голосов (с VK именами)
 router.get('/votes/public-log', StatsController.getPublicVotesLog);
 
+// Результаты выборов
+router.get('/election-results', StatsController.getElectionResults);
+
 module.exports = router;

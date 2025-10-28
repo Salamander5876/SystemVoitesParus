@@ -81,6 +81,25 @@ class Settings {
         this.delete('start_time');
         this.delete('end_time');
     }
+
+    // Методы для публикации результатов
+    static getResultsPublished() {
+        return this.get('results_published') === 'true';
+    }
+
+    static publishResults() {
+        this.set('results_published', 'true');
+        this.set('results_published_at', new Date().toISOString());
+    }
+
+    static unpublishResults() {
+        this.set('results_published', 'false');
+        this.delete('results_published_at');
+    }
+
+    static getResultsPublishedAt() {
+        return this.get('results_published_at');
+    }
 }
 
 module.exports = Settings;

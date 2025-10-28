@@ -593,6 +593,16 @@ class AdminController {
                 return res.status(500).json({ error: 'Не удалось аннулировать голос' });
             }
 
+            // Сбрасываем статус избирателя (если список избирателей используется)
+            const voterStats = EligibleVoter.getStats();
+            if (voterStats.total > 0) {
+                EligibleVoter.unmarkAsVoted(vote.full_name);
+                logger.info('Voter status reset after vote cancellation', {
+                    full_name: vote.full_name,
+                    vote_id: voteId
+                });
+            }
+
             // Логируем действие
             Admin.logAction(
                 req.admin.id,
@@ -623,6 +633,62 @@ class AdminController {
             res.json({
                 success: true,
                 message: 'Голос аннулирован'
+            });
+
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    // Опубликовать результаты
+    static publishResults(req, res, next) {
+        try {
+            Settings.publishResults();
+
+            logger.info('Results published', {
+                admin_id: req.admin.id,
+                timestamp: new Date().toISOString()
+            });
+
+            // Отправляем WebSocket событие
+            if (req.app.get('io')) {
+                req.app.get('io').emit('results_published', {
+                    published: true,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'Результаты опубликованы'
+            });
+
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    // Скрыть результаты
+    static unpublishResults(req, res, next) {
+        try {
+            Settings.unpublishResults();
+
+            logger.info('Results unpublished', {
+                admin_id: req.admin.id,
+                timestamp: new Date().toISOString()
+            });
+
+            // Отправляем WebSocket событие
+            if (req.app.get('io')) {
+                req.app.get('io').emit('results_published', {
+                    published: false,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'Результаты скрыты'
             });
 
         } catch (error) {

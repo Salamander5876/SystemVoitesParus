@@ -126,6 +126,9 @@ async function loadStatus() {
         document.getElementById('voting-status').textContent = statusMap[data.status] || '-';
         document.getElementById('total-votes').textContent = data.totalVotes || 0;
         document.getElementById('total-voters').textContent = data.uniqueVoters || 0;
+
+        // Загружаем статус публикации результатов
+        await loadResultsStatus();
     } catch (error) {
         console.error('Error loading status:', error);
     }
@@ -850,6 +853,87 @@ async function exportVoters() {
     } catch (error) {
         console.error('Error exporting voters:', error);
         showAlert('Ошибка экспорта', 'error');
+    }
+}
+
+// Загрузить статус публикации результатов
+async function loadResultsStatus() {
+    try {
+        const response = await fetch('/api/election-results', {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            }
+        });
+        const data = await response.json();
+
+        const statusEl = document.getElementById('results-status');
+        if (data.published) {
+            statusEl.textContent = '✅ Опубликованы';
+            statusEl.style.color = 'green';
+        } else {
+            statusEl.textContent = '🔒 Не опубликованы';
+            statusEl.style.color = '#999';
+        }
+    } catch (error) {
+        console.error('Error loading results status:', error);
+    }
+}
+
+// Опубликовать результаты
+async function publishResults() {
+    if (!confirm('Опубликовать результаты выборов для всех пользователей?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/voting/publish-results', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showAlert('Результаты опубликованы!', 'success');
+            await loadResultsStatus();
+        } else {
+            showAlert(data.error || 'Ошибка публикации', 'error');
+        }
+    } catch (error) {
+        console.error('Error publishing results:', error);
+        showAlert('Ошибка публикации результатов', 'error');
+    }
+}
+
+// Скрыть результаты
+async function unpublishResults() {
+    if (!confirm('Скрыть результаты выборов от пользователей?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/voting/unpublish-results', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showAlert('Результаты скрыты', 'success');
+            await loadResultsStatus();
+        } else {
+            showAlert(data.error || 'Ошибка скрытия', 'error');
+        }
+    } catch (error) {
+        console.error('Error unpublishing results:', error);
+        showAlert('Ошибка скрытия результатов', 'error');
     }
 }
 

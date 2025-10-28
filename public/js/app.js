@@ -14,6 +14,7 @@ let allShifts = [];
 // Инициализация
 async function init() {
     await loadStatus();
+    await loadElectionResults(); // Проверяем, опубликованы ли результаты
     await loadVotesLog();
     setupWebSocket();
 }
@@ -135,6 +136,115 @@ function renderVotesLog(votes, shifts) {
     });
 }
 
+// Загрузка и отображение результатов выборов
+async function loadElectionResults() {
+    try {
+        const response = await fetch('/api/election-results');
+        const data = await response.json();
+
+        const resultsSection = document.getElementById('results-section');
+        const resultsContainer = document.getElementById('results-container');
+
+        if (data.success && data.published) {
+            // Результаты опубликованы - показываем их
+            resultsSection.style.display = 'block';
+            resultsContainer.innerHTML = '';
+
+            data.results.forEach(shiftResult => {
+                const shiftDiv = document.createElement('div');
+                shiftDiv.className = 'shift-result';
+
+                let winnerHTML = '';
+                if (shiftResult.winner) {
+                    winnerHTML = `
+                        <div class="winner-announcement">
+                            <div class="winner-badge">🏆</div>
+                            <h4>Победитель</h4>
+                            <div class="winner-name">${shiftResult.winner.name}</div>
+                            <div class="winner-stats">
+                                <div class="winner-stat">
+                                    <span class="winner-stat-label">Голосов</span>
+                                    <span class="winner-stat-value">${shiftResult.winner.vote_count}</span>
+                                </div>
+                                <div class="winner-stat">
+                                    <span class="winner-stat-label">Процент</span>
+                                    <span class="winner-stat-value">${shiftResult.winner.percentage}%</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    winnerHTML = `
+                        <div class="winner-announcement" style="background: linear-gradient(135deg, #e0e0e0 0%, #bdbdbd 100%);">
+                            <div class="winner-badge">❓</div>
+                            <h4>Победитель не определен</h4>
+                        </div>
+                    `;
+                }
+
+                let candidatesHTML = '';
+                if (shiftResult.candidates && shiftResult.candidates.length > 0) {
+                    candidatesHTML = `
+                        <div class="candidates-list">
+                            <h5>Все кандидаты</h5>
+                            ${shiftResult.candidates.map((candidate, index) => `
+                                <div class="candidate-item">
+                                    <div class="candidate-name">
+                                        ${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•'} ${candidate.name}
+                                    </div>
+                                    <div class="candidate-stats-inline">
+                                        <span class="candidate-votes">${candidate.vote_count} голосов</span>
+                                        <span class="candidate-percentage">${candidate.percentage}%</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                let specialVotesHTML = '';
+                if (shiftResult.special_votes) {
+                    specialVotesHTML = `
+                        <div class="special-votes">
+                            <h5>Специальные голоса</h5>
+                            <div class="special-votes-grid">
+                                <div class="special-vote-item">
+                                    <span class="special-vote-label">Против всех</span>
+                                    <span class="special-vote-count">${shiftResult.special_votes.against_all}</span>
+                                </div>
+                                <div class="special-vote-item">
+                                    <span class="special-vote-label">Воздержался</span>
+                                    <span class="special-vote-count">${shiftResult.special_votes.abstain}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                shiftDiv.innerHTML = `
+                    <div class="shift-result-header">
+                        <h3>${shiftResult.shift.name}</h3>
+                        <div class="shift-result-stats">
+                            Всего голосов: ${shiftResult.stats.total_votes} |
+                            Проголосовало: ${shiftResult.stats.unique_voters}
+                        </div>
+                    </div>
+                    ${winnerHTML}
+                    ${candidatesHTML}
+                    ${specialVotesHTML}
+                `;
+
+                resultsContainer.appendChild(shiftDiv);
+            });
+        } else {
+            // Результаты не опубликованы
+            resultsSection.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Error loading election results:', error);
+    }
+}
+
 // Настройка WebSocket
 function setupWebSocket() {
     // Обновление статистики в реальном времени
@@ -151,6 +261,11 @@ function setupWebSocket() {
     // Обновление статуса голосования
     socket.on('voting_status_changed', (data) => {
         updateStatus(data);
+    });
+
+    // Обновление результатов при публикации
+    socket.on('results_published', () => {
+        loadElectionResults();
     });
 }
 

@@ -55,12 +55,20 @@
                         <div class="stat-label">Участников</div>
                         <div id="total-voters" class="stat-value">0</div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Результаты</div>
+                        <div id="results-status" class="stat-value">Не опубликованы</div>
+                    </div>
                 </div>
                 <div class="control-buttons">
                     <button class="btn btn-success" onclick="controlVoting('start')">▶️ Запустить</button>
                     <button class="btn btn-warning" onclick="controlVoting('pause')">⏸️ Приостановить</button>
                     <button class="btn btn-danger" onclick="controlVoting('stop')">⏹️ Остановить</button>
                     <button class="btn btn-secondary" onclick="controlVoting('reset')">🔄 Сбросить</button>
+                </div>
+                <div class="control-buttons" style="margin-top: 20px;">
+                    <button class="btn btn-primary btn-large" onclick="publishResults()">🏆 Опубликовать результаты</button>
+                    <button class="btn btn-secondary" onclick="unpublishResults()">🔒 Скрыть результаты</button>
                 </div>
             </section>
         </div>

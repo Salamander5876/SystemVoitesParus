@@ -46,6 +46,18 @@ class EligibleVoter {
         return result.changes > 0;
     }
 
+    // Сбросить статус голосования (для случая аннулирования голоса)
+    static unmarkAsVoted(fullName) {
+        const normalized = this.normalizeName(fullName);
+        const stmt = db.prepare(`
+            UPDATE eligible_voters
+            SET has_voted = 0, voted_at = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE full_name_normalized = ?
+        `);
+        const result = stmt.run(normalized);
+        return result.changes > 0;
+    }
+
     // Добавить избирателя
     static add(fullName) {
         const normalized = this.normalizeName(fullName);

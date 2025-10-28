@@ -308,6 +308,12 @@ body {
     font-size: 13px;
 }
 
+.btn-large {
+    padding: 16px 32px;
+    font-size: 1.1em;
+    font-weight: 600;
+}
+
 /* Vote status styles */
 .vote-cancelled {
     background-color: #ffebee !important;

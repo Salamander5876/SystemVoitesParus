@@ -308,6 +308,26 @@ class Vote {
         `);
         return stmt.all().map(row => row.name);
     }
+
+    // Получить количество голосов "Против всех" для смены
+    static getAgainstAllCount(shiftId) {
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM votes
+            WHERE shift_id = ? AND vote_type = 'against_all' AND is_cancelled = 0
+        `);
+        return stmt.get(shiftId).count;
+    }
+
+    // Получить количество голосов "Воздержался" для смены
+    static getAbstainCount(shiftId) {
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM votes
+            WHERE shift_id = ? AND vote_type = 'abstain' AND is_cancelled = 0
+        `);
+        return stmt.get(shiftId).count;
+    }
 }
 
 module.exports = Vote;
