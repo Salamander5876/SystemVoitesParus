@@ -34,4 +34,7 @@ router.post('/vote', voteLimiter, (req, res, next) => {
 // Статистика пользователя
 router.get('/users/:vkId/stats', VoteController.getUserStats);
 
+// Публичный журнал голосов (с VK именами)
+router.get('/votes/public-log', StatsController.getPublicVotesLog);
+
 module.exports = router;

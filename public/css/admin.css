@@ -128,20 +128,82 @@ body {
 .dashboard-header {
     background: var(--dark-color);
     color: white;
+    padding: 0;
+}
+
+.header-content {
     padding: 20px 30px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
 }
 
 .dashboard-header h1 {
     font-size: 1.5em;
+    flex-shrink: 0;
+}
+
+/* Tab Navigation */
+.nav-tabs {
+    display: flex;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 5px;
+    border-radius: var(--border-radius);
+    flex-wrap: wrap;
+}
+
+.nav-tab {
+    padding: 10px 20px;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.7);
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 500;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.nav-tab:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+}
+
+.nav-tab.active {
+    background: var(--primary-color);
+    color: white;
 }
 
 .user-info {
     display: flex;
     align-items: center;
     gap: 15px;
+    flex-shrink: 0;
+}
+
+/* Tab Content */
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .btn-logout {
@@ -232,6 +294,45 @@ body {
     background: #7f8c8d;
 }
 
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.btn-small {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+/* Vote status styles */
+.vote-cancelled {
+    background-color: #ffebee !important;
+    opacity: 0.7;
+}
+
+.cancelled-badge {
+    background: #e74c3c;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+    display: inline-block;
+    margin-left: 8px;
+}
+
+.cancelled-reason {
+    color: #666;
+    font-size: 12px;
+    font-style: italic;
+    display: block;
+    margin-top: 4px;
+}
+
 /* Forms */
 .form-row {
     display: grid;
@@ -293,6 +394,30 @@ table th {
 
 table tr:hover {
     background: #f8f9fa;
+}
+
+/* Votes table specific styles */
+#votes-table th:first-child,
+#votes-table td:first-child {
+    background: #fff;
+    position: sticky;
+    left: 0;
+    z-index: 5;
+    font-weight: 600;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+}
+
+#votes-table th:first-child {
+    z-index: 15;
+    background: var(--light-color);
+}
+
+#votes-table tr:hover td:first-child {
+    background: #f8f9fa;
+}
+
+#votes-table td {
+    min-width: 150px;
 }
 
 .table-actions {
@@ -438,12 +563,54 @@ table tr:hover {
     color: #2980b9;
 }
 
+/* Badge secondary */
+.badge-secondary {
+    background: rgba(149, 165, 166, 0.2);
+    color: #7f8c8d;
+}
+
+.badge-primary {
+    background: rgba(52, 152, 219, 0.2);
+    color: var(--primary-color);
+}
+
 /* Responsive */
-@media (max-width: 768px) {
-    .dashboard-header {
+@media (max-width: 1024px) {
+    .header-content {
         flex-direction: column;
-        gap: 15px;
+        align-items: stretch;
+    }
+
+    .nav-tabs {
+        order: 2;
+        justify-content: center;
+    }
+
+    .user-info {
+        order: 3;
+        justify-content: flex-end;
+    }
+
+    .dashboard-header h1 {
+        order: 1;
         text-align: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .header-content {
+        padding: 15px 20px;
+    }
+
+    .nav-tabs {
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .nav-tab {
+        width: 100%;
+        text-align: center;
+        padding: 12px 15px;
     }
 
     .dashboard-content {
@@ -464,5 +631,9 @@ table tr:hover {
 
     table {
         font-size: 0.9em;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
     }
 }

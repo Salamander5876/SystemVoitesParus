@@ -1,4 +1,8 @@
 require('dotenv').config();
+
+// Установка часового пояса Asia/Chita
+process.env.TZ = 'Asia/Chita';
+
 const { VK, Keyboard } = require('vk-io');
 const { QuestionManager } = require('vk-io-question');
 const axios = require('axios');
@@ -326,11 +330,51 @@ vk.updates.on('message_new', async (context) => {
     }
 });
 
-// Запуск
+// HTTP сервер для приема уведомлений от админ-панели
+const express = require('express');
+const botApp = express();
+const BOT_PORT = process.env.BOT_API_PORT || 3001;
+
+botApp.use(express.json());
+
+// Endpoint для уведомления об аннулировании голоса
+botApp.post('/api/notify-vote-cancelled', async (req, res) => {
+    try {
+        const { vkId, shiftName, reason } = req.body;
+
+        if (!vkId || !shiftName || !reason) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        // Отправляем сообщение пользователю
+        await vk.api.messages.send({
+            user_id: vkId,
+            message: `⚠️ Уведомление об аннулировании голоса\n\n` +
+                `Ваш голос на смене "${shiftName}" был аннулирован администратором.\n\n` +
+                `Причина: ${reason}\n\n` +
+                `Теперь вы можете проголосовать заново на этой смене. Используйте команду /start для начала голосования.`,
+            random_id: Math.floor(Math.random() * 1000000)
+        });
+
+        logger.info(`Vote cancellation notification sent to user ${vkId} for shift ${shiftName}`);
+        res.json({ success: true });
+
+    } catch (error) {
+        logger.error('Error sending cancellation notification:', error);
+        res.status(500).json({ error: 'Failed to send notification' });
+    }
+});
+
+botApp.listen(BOT_PORT, () => {
+    logger.info(`Bot API server listening on port ${BOT_PORT}`);
+    console.log(`✅ Bot API сервер запущен на порту ${BOT_PORT}`);
+});
+
+// Запуск VK бота
 vk.updates.start()
     .then(() => {
         logger.info('VK Bot started (polling)');
-        console.log('✅ VK Бот запущен!');
+        console.log('✅ VK Бот запущен (polling)!');
     })
     .catch((error) => {
         logger.error('Bot error:', error);

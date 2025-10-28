@@ -28,10 +28,25 @@ router.delete('/candidates/:id', AdminController.deleteCandidate);
 // Просмотр голосов
 router.get('/votes', AdminController.getAllVotes);
 
+// Журнал аудита голосов (с полной информацией)
+router.get('/votes/audit', AdminController.getVotesAuditLog);
+
+// Аннулирование голоса
+router.post('/votes/:voteId/cancel', AdminController.cancelVote);
+
 // Экспорт данных
 router.get('/export/votes', AdminController.exportVotes);
 
 // Логи
 router.get('/logs', AdminController.getAuditLogs);
+
+// Управление списком избирателей
+router.get('/voters', AdminController.getAllVoters);
+router.get('/voters/stats', AdminController.getVotersStats);
+router.post('/voters/upload', AdminController.uploadVoters);
+router.delete('/voters/:id', AdminController.deleteVoter);
+router.post('/voters/clear', AdminController.clearVoters);
+router.post('/voters/reset-status', AdminController.resetVotersStatus);
+router.get('/export/voters', AdminController.exportVoters);
 
 module.exports = router;

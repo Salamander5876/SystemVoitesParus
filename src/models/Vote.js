@@ -105,6 +105,71 @@ class Vote {
         return result.changes > 0;
     }
 
+    // Аннулировать голос
+    static cancelVote(voteId, adminId, reason) {
+        const stmt = db.prepare(`
+            UPDATE votes
+            SET is_cancelled = 1,
+                cancellation_reason = ?,
+                cancelled_at = CURRENT_TIMESTAMP,
+                cancelled_by = ?
+            WHERE id = ?
+        `);
+        const result = stmt.run(reason, adminId, voteId);
+        return result.changes > 0;
+    }
+
+    // Получить информацию о голосе с данными пользователя (для аннулирования)
+    static getVoteWithUserInfo(voteId) {
+        const stmt = db.prepare(`
+            SELECT
+                v.id,
+                v.shift_id,
+                v.is_cancelled,
+                v.cancellation_reason,
+                v.cancelled_at,
+                v.created_at,
+                u.id as user_id,
+                u.vk_id,
+                u.full_name,
+                u.nickname,
+                s.name as shift_name
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            JOIN shifts s ON v.shift_id = s.id
+            WHERE v.id = ?
+        `);
+        return stmt.get(voteId);
+    }
+
+    // Получить все голоса с полной информацией для журнала (включая VK ID)
+    static getAllWithFullInfo() {
+        const stmt = db.prepare(`
+            SELECT
+                v.id,
+                v.vote_type,
+                v.created_at,
+                v.is_cancelled,
+                v.cancellation_reason,
+                v.cancelled_at,
+                u.vk_id,
+                u.full_name,
+                u.nickname,
+                s.name as shift_name,
+                CASE
+                    WHEN v.vote_type = 'against_all' THEN 'Против всех'
+                    WHEN v.vote_type = 'abstain' THEN 'Воздержался'
+                    ELSE c.name
+                END as candidate_name
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            LEFT JOIN candidates c ON v.candidate_id = c.id
+            JOIN shifts s ON v.shift_id = s.id
+            ORDER BY v.created_at DESC
+        `);
+        return stmt.all();
+    }
+
     static getTotalCount() {
         const stmt = db.prepare('SELECT COUNT(*) as total FROM votes');
         return stmt.get().total;
@@ -166,6 +231,82 @@ class Vote {
         const stmt = db.prepare('SELECT vote_hash FROM votes WHERE id = ?');
         const vote = stmt.get(voteId);
         return vote && vote.vote_hash === expectedHash;
+    }
+
+    // Проверить, голосовал ли человек с таким ФИО за конкретную смену (только НЕ аннулированные голоса)
+    static hasVotedByFullNameAndShift(fullName, shiftId) {
+        const normalizedFullName = fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+
+        const stmt = db.prepare(`
+            SELECT COUNT(*) as count
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            WHERE LOWER(TRIM(REPLACE(u.full_name, '  ', ' '))) = ?
+            AND v.shift_id = ?
+            AND v.is_cancelled = 0
+        `);
+
+        const result = stmt.get(normalizedFullName, shiftId);
+        return result.count > 0;
+    }
+
+    // Получить голоса, сгруппированные по псевдониму (без персональных данных)
+    // Включает информацию об аннулированных голосах
+    static getGroupedByNickname() {
+        // Получаем все голоса
+        const stmt = db.prepare(`
+            SELECT
+                u.nickname,
+                s.id as shift_id,
+                s.name as shift_name,
+                CASE
+                    WHEN v.vote_type = 'against_all' THEN 'Против всех'
+                    WHEN v.vote_type = 'abstain' THEN 'Воздержался'
+                    ELSE c.name
+                END as candidate_name,
+                v.vote_type,
+                v.is_cancelled,
+                v.cancellation_reason
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            LEFT JOIN candidates c ON v.candidate_id = c.id
+            JOIN shifts s ON v.shift_id = s.id
+            ORDER BY u.nickname, s.name
+        `);
+
+        const votes = stmt.all();
+
+        // Группируем по псевдониму
+        const grouped = {};
+
+        votes.forEach(vote => {
+            if (!grouped[vote.nickname]) {
+                grouped[vote.nickname] = {
+                    nickname: vote.nickname,
+                    votes: {}
+                };
+            }
+
+            grouped[vote.nickname].votes[vote.shift_name] = {
+                candidate: vote.candidate_name,
+                type: vote.vote_type,
+                is_cancelled: vote.is_cancelled,
+                cancellation_reason: vote.cancellation_reason
+            };
+        });
+
+        return Object.values(grouped);
+    }
+
+    // Получить список всех смен для заголовков таблицы
+    static getAllShiftNames() {
+        const stmt = db.prepare(`
+            SELECT DISTINCT s.name
+            FROM shifts s
+            WHERE EXISTS (SELECT 1 FROM votes v WHERE v.shift_id = s.id)
+            ORDER BY s.name
+        `);
+        return stmt.all().map(row => row.name);
     }
 }
 

@@ -1,4 +1,8 @@
 require('dotenv').config();
+
+// Установка часового пояса Asia/Chita
+process.env.TZ = 'Asia/Chita';
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');

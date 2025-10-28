@@ -17,7 +17,9 @@
       "Bash(del INSTALL.md README.md QUICK_START.md)",
       "Bash(taskkill:*)",
       "Bash(tasklist:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(netstat:*)",
+      "Bash(move srcdatabasevoting.db srcdatabasevoting.db.backup)"
     ],
     "deny": [],
     "ask": []

@@ -18,13 +18,6 @@
             </div>
         </header>
 
-        <div class="shift-selector">
-            <h3>Выберите смену:</h3>
-            <div id="shift-buttons" class="shift-buttons">
-                <!-- Кнопки смен будут добавлены динамически -->
-            </div>
-        </div>
-
         <main class="main-content">
             <section class="stats-section">
                 <div class="stats-grid">
@@ -33,29 +26,35 @@
                         <div id="total-votes" class="stat-value">0</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-label">Проголосовало</div>
+                        <div class="stat-label">Проголосовало участников</div>
                         <div id="unique-voters" class="stat-value">0</div>
                     </div>
                 </div>
             </section>
 
-            <section class="results-section">
-                <h3>Результаты голосования</h3>
-                <div id="no-shift" class="no-data">
-                    Выберите смену для просмотра результатов
-                </div>
-                <div id="candidates-list" class="candidates-list" style="display: none;">
-                    <!-- Список кандидатов будет добавлен динамически -->
-                </div>
-                <div class="chart-container" style="display: none;">
-                    <canvas id="results-chart"></canvas>
-                </div>
-            </section>
-
-            <section class="activity-section">
-                <h3>Последние голоса</h3>
-                <div id="recent-votes" class="recent-votes">
-                    <div class="no-data">Голосов пока нет</div>
+            <section class="votes-log-section">
+                <h3>Журнал голосования</h3>
+                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
+                    Здесь отображаются все участники, которые проголосовали, с информацией о сменах.
+                </p>
+                <div class="table-container">
+                    <table id="votes-log-table" class="votes-log-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 50px;">ID</th>
+                                <th style="width: 150px;">Дата и время</th>
+                                <th style="width: 200px;">ФИО (анкета)</th>
+                                <th style="width: 180px;">Имя Фамилия (VK)</th>
+                                <th style="width: 100px;">VK ID</th>
+                                <th class="shift-column">Смена</th>
+                            </tr>
+                        </thead>
+                        <tbody id="votes-log-body">
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 30px;">Загрузка...</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </main>

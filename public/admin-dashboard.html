@@ -8,10 +8,29 @@
 </head>
 <body class="dashboard">
     <header class="dashboard-header">
-        <h1>Панель управления</h1>
-        <div class="user-info">
-            <span id="admin-username">Администратор</span>
-            <button class="btn-logout" onclick="logout()">Выйти</button>
+        <div class="header-content">
+            <h1>Панель управления</h1>
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="voting-control" onclick="switchTab('voting-control')">
+                    ⚙️ Управление голосованием
+                </button>
+                <button class="nav-tab" data-tab="shifts-candidates" onclick="switchTab('shifts-candidates')">
+                    👥 Смены и кандидаты
+                </button>
+                <button class="nav-tab" data-tab="voters" onclick="switchTab('voters')">
+                    📋 Список избирателей
+                </button>
+                <button class="nav-tab" data-tab="audit-log" onclick="switchTab('audit-log')">
+                    📊 Журнал голосов
+                </button>
+                <button class="nav-tab" data-tab="results" onclick="switchTab('results')">
+                    📈 Итоговая ведомость
+                </button>
+            </nav>
+            <div class="user-info">
+                <span id="admin-username">Администратор</span>
+                <button class="btn-logout" onclick="logout()">Выйти</button>
+            </div>
         </div>
     </header>
 
@@ -19,98 +38,176 @@
         <!-- Alerts -->
         <div id="alert-container"></div>
 
-        <!-- Voting Control -->
-        <section class="section">
-            <h2>Управление голосованием</h2>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-label">Статус</div>
-                    <div id="voting-status" class="stat-value">-</div>
+        <!-- Tab: Voting Control -->
+        <div id="tab-voting-control" class="tab-content active">
+            <section class="section">
+                <h2>Управление голосованием</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Статус</div>
+                        <div id="voting-status" class="stat-value">-</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Всего голосов</div>
+                        <div id="total-votes" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Участников</div>
+                        <div id="total-voters" class="stat-value">0</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Всего голосов</div>
-                    <div id="total-votes" class="stat-value">0</div>
+                <div class="control-buttons">
+                    <button class="btn btn-success" onclick="controlVoting('start')">▶️ Запустить</button>
+                    <button class="btn btn-warning" onclick="controlVoting('pause')">⏸️ Приостановить</button>
+                    <button class="btn btn-danger" onclick="controlVoting('stop')">⏹️ Остановить</button>
+                    <button class="btn btn-secondary" onclick="controlVoting('reset')">🔄 Сбросить</button>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">Участников</div>
-                    <div id="total-voters" class="stat-value">0</div>
+            </section>
+        </div>
+
+        <!-- Tab: Shifts and Candidates -->
+        <div id="tab-shifts-candidates" class="tab-content">
+            <section class="section">
+                <h2>Управление сменами</h2>
+                <button class="btn btn-primary" onclick="showAddShiftModal()">➕ Добавить смену</button>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table id="shifts-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>Описание</th>
+                                <th>Активна</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Заполняется динамически -->
+                        </tbody>
+                    </table>
                 </div>
-            </div>
-            <div class="control-buttons">
-                <button class="btn btn-success" onclick="controlVoting('start')">▶️ Запустить</button>
-                <button class="btn btn-warning" onclick="controlVoting('pause')">⏸️ Приостановить</button>
-                <button class="btn btn-danger" onclick="controlVoting('stop')">⏹️ Остановить</button>
-                <button class="btn btn-secondary" onclick="controlVoting('reset')">🔄 Сбросить</button>
-            </div>
-        </section>
+            </section>
 
-        <!-- Shifts Management -->
-        <section class="section">
-            <h2>Управление сменами</h2>
-            <button class="btn btn-primary" onclick="showAddShiftModal()">➕ Добавить смену</button>
-            <div class="table-container" style="margin-top: 20px;">
-                <table id="shifts-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Название</th>
-                            <th>Описание</th>
-                            <th>Активна</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Заполняется динамически -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
+            <section class="section" style="margin-top: 30px;">
+                <h2>Управление кандидатами</h2>
+                <button class="btn btn-primary" onclick="showAddCandidateModal()">➕ Добавить кандидата</button>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table id="candidates-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Смена</th>
+                                <th>Имя</th>
+                                <th>Голосов</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Заполняется динамически -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
 
-        <!-- Candidates Management -->
-        <section class="section">
-            <h2>Управление кандидатами</h2>
-            <button class="btn btn-primary" onclick="showAddCandidateModal()">➕ Добавить кандидата</button>
-            <div class="table-container" style="margin-top: 20px;">
-                <table id="candidates-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Смена</th>
-                            <th>Имя</th>
-                            <th>Голосов</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Заполняется динамически -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        <!-- Tab: Voters Management -->
+        <div id="tab-voters" class="tab-content">
+            <section class="section">
+                <h2>Управление списком избирателей</h2>
+                <div class="stats-grid" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Всего избирателей</div>
+                        <div id="voters-total" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Проголосовало</div>
+                        <div id="voters-voted" class="stat-value">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Осталось проголосовать</div>
+                        <div id="voters-remaining" class="stat-value">0</div>
+                    </div>
+                </div>
+                <div class="control-buttons">
+                    <button class="btn btn-primary" onclick="showUploadVotersModal()">📤 Загрузить список</button>
+                    <button class="btn btn-secondary" onclick="exportVoters()">📊 Экспорт в Excel</button>
+                    <button class="btn btn-warning" onclick="resetVotersStatus()">🔄 Сбросить статус голосования</button>
+                    <button class="btn btn-danger" onclick="clearVoters()">🗑️ Очистить список</button>
+                </div>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table id="voters-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>ФИО</th>
+                                <th>Проголосовал</th>
+                                <th>Дата голосования</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Заполняется динамически -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
 
-        <!-- Votes Log -->
-        <section class="section">
-            <h2>Журнал голосов</h2>
-            <button class="btn btn-secondary" onclick="exportVotes()">📥 Экспорт в CSV</button>
-            <div class="table-container" style="margin-top: 20px;">
-                <table id="votes-table">
-                    <thead>
-                        <tr>
-                            <th>Время</th>
-                            <th>VK ID</th>
-                            <th>ФИО</th>
-                            <th>Псевдоним</th>
-                            <th>Смена</th>
-                            <th>Кандидат</th>
-                            <th>Голос</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <!-- Заполняется динамически -->
-                    </tbody>
-                </table>
-            </div>
-        </section>
+        <!-- Tab: Audit Log (Journal with full info) -->
+        <div id="tab-audit-log" class="tab-content">
+            <section class="section">
+                <h2>Журнал голосов</h2>
+                <p style="color: #666; margin-bottom: 15px;">
+                    Полный журнал всех голосов с ФИО и VK ID для проверки легитимности.
+                    Здесь вы можете аннулировать голоса в случае обнаружения нарушений.
+                </p>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table id="audit-log-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Дата и время</th>
+                                <th>ФИО (анкета)</th>
+                                <th>Имя Фамилия (VK)</th>
+                                <th>VK ID</th>
+                                <th>Смена</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-log-body">
+                            <!-- Заполняется динамически -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Tab: Results (итоговая ведомость) -->
+        <div id="tab-results" class="tab-content">
+            <section class="section">
+                <h2>Итоговая ведомость</h2>
+                <div id="results-status-message" class="alert" style="margin-bottom: 20px;">
+                    <!-- Показывается если голосование активно -->
+                </div>
+                <p style="color: #666; margin-bottom: 15px;">
+                    Таблица показывает, за кого проголосовал каждый участник по сменам.
+                    Персональные данные (VK ID, настоящее ФИО) скрыты для обеспечения анонимности.
+                    Аннулированные голоса отмечены и не учитываются в подсчёте.
+                </p>
+                <button class="btn btn-secondary" onclick="exportVotes()">📊 Экспорт в Excel</button>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table id="results-table">
+                        <thead id="results-table-head">
+                            <!-- Заполняется динамически -->
+                        </thead>
+                        <tbody id="results-table-body">
+                            <!-- Заполняется динамически -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
     </div>
 
     <!-- Modal for Add Shift -->
@@ -167,6 +264,66 @@
                     <textarea name="description"></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary">Создать</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for Upload Voters -->
+    <div id="voters-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Загрузить список избирателей</h2>
+                <button class="modal-close" onclick="closeModal('voters-modal')">&times;</button>
+            </div>
+            <form id="voters-form">
+                <div class="form-group">
+                    <label>Список ФИО избирателей (каждое ФИО с новой строки)*</label>
+                    <textarea
+                        name="voters"
+                        id="voters-textarea"
+                        required
+                        rows="15"
+                        placeholder="Иванов Иван Иванович&#10;Петров Петр Петрович&#10;Сидорова Мария Александровна&#10;..."></textarea>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        Каждое ФИО должно быть на отдельной строке. Допускается только кириллица и пробелы.
+                    </small>
+                </div>
+                <button type="submit" class="btn btn-primary">Загрузить</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for Cancel Vote -->
+    <div id="cancel-vote-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Аннулировать голос</h2>
+                <button class="modal-close" onclick="closeModal('cancel-vote-modal')">&times;</button>
+            </div>
+            <form id="cancel-vote-form">
+                <input type="hidden" id="cancel-vote-id" name="voteId">
+                <div class="form-group">
+                    <label>Информация о голосе:</label>
+                    <div id="cancel-vote-info" style="background: #f5f5f5; padding: 10px; border-radius: 4px; margin-bottom: 15px;">
+                        <!-- Заполняется динамически -->
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Причина аннулирования*</label>
+                    <textarea
+                        name="reason"
+                        id="cancel-reason"
+                        required
+                        rows="4"
+                        placeholder="Укажите причину аннулирования голоса (например: проголосовал не тот человек, технический сбой и т.д.)"></textarea>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        Причина будет сохранена в журнале и отправлена пользователю.
+                    </small>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('cancel-vote-modal')">Отмена</button>
+                    <button type="submit" class="btn btn-danger">Аннулировать голос</button>
+                </div>
             </form>
         </div>
     </div>

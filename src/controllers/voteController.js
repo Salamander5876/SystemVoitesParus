@@ -3,6 +3,7 @@ const Candidate = require('../models/Candidate');
 const Vote = require('../models/Vote');
 const Shift = require('../models/Shift');
 const Settings = require('../models/Settings');
+const EligibleVoter = require('../models/EligibleVoter');
 const logger = require('../utils/logger');
 const db = require('../config/database');
 
@@ -20,6 +21,24 @@ class VoteController {
             const shift = Shift.getById(shiftId);
             if (!shift || !shift.is_active) {
                 throw new Error('INVALID_SHIFT');
+            }
+
+            // НОВАЯ ПРОВЕРКА: Проверка ФИО в списке избирателей
+            const voterStats = EligibleVoter.getStats();
+            if (voterStats.total > 0) {
+                // Список избирателей существует, проверяем наличие
+                const eligibleVoter = EligibleVoter.checkEligibility(fullName);
+
+                if (!eligibleVoter) {
+                    throw new Error('NOT_ELIGIBLE');
+                }
+
+                // Проверяем, голосовал ли этот человек за КОНКРЕТНУЮ смену
+                if (Vote.hasVotedByFullNameAndShift(fullName, shiftId)) {
+                    const error = new Error('VOTER_ALREADY_USED');
+                    error.shiftName = shift.name;
+                    throw error;
+                }
             }
 
             let candidate = null;
@@ -53,6 +72,11 @@ class VoteController {
             // Обновляем счётчик кандидата (только если голос за кандидата)
             if (voteType === 'candidate' && candidateId) {
                 Candidate.incrementVoteCount(candidateId);
+            }
+
+            // Отмечаем избирателя как проголосовавшего (если список избирателей используется)
+            if (voterStats.total > 0) {
+                EligibleVoter.markAsVoted(fullName);
             }
 
             return {
@@ -131,6 +155,13 @@ class VoteController {
             }
             if (error.message === 'ALREADY_VOTED') {
                 return res.status(409).json({ error: 'Вы уже голосовали на этой смене' });
+            }
+            if (error.message === 'NOT_ELIGIBLE') {
+                return res.status(403).json({ error: 'Ваше ФИО отсутствует в списке избирателей. Обратитесь к администратору.' });
+            }
+            if (error.message === 'VOTER_ALREADY_USED') {
+                const shiftInfo = error.shiftName ? ` на смене "${error.shiftName}"` : '';
+                return res.status(403).json({ error: `Под этим ФИО уже проголосовали${shiftInfo}. Если это ошибка, обратитесь к администратору.` });
             }
 
             next(error);

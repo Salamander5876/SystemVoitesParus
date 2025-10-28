@@ -40,9 +40,14 @@ CREATE TABLE IF NOT EXISTS votes (
     vote_type TEXT NOT NULL CHECK(vote_type IN ('candidate', 'against_all', 'abstain')),
     vote_hash TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_cancelled BOOLEAN DEFAULT 0,
+    cancellation_reason TEXT,
+    cancelled_at DATETIME,
+    cancelled_by INTEGER,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
     FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE SET NULL,
+    FOREIGN KEY (cancelled_by) REFERENCES admins(id),
     UNIQUE(user_id, shift_id)
 );
 
@@ -73,11 +78,24 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     FOREIGN KEY (admin_id) REFERENCES admins(id)
 );
 
+-- Таблица списка избирателей
+CREATE TABLE IF NOT EXISTS eligible_voters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    full_name TEXT NOT NULL,
+    full_name_normalized TEXT NOT NULL,
+    has_voted BOOLEAN DEFAULT 0,
+    voted_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Индексы для оптимизации
 CREATE INDEX IF NOT EXISTS idx_users_vk_id ON users(vk_id);
 CREATE INDEX IF NOT EXISTS idx_votes_user_id ON votes(user_id);
 CREATE INDEX IF NOT EXISTS idx_votes_shift_id ON votes(shift_id);
 CREATE INDEX IF NOT EXISTS idx_votes_candidate_id ON votes(candidate_id);
 CREATE INDEX IF NOT EXISTS idx_votes_created_at ON votes(created_at);
+CREATE INDEX IF NOT EXISTS idx_votes_is_cancelled ON votes(is_cancelled);
 CREATE INDEX IF NOT EXISTS idx_candidates_shift_id ON candidates(shift_id);
 CREATE INDEX IF NOT EXISTS idx_shifts_is_active ON shifts(is_active);
+CREATE INDEX IF NOT EXISTS idx_eligible_voters_normalized ON eligible_voters(full_name_normalized);

@@ -103,6 +103,90 @@ class StatsController {
             next(error);
         }
     }
+
+    // Публичный журнал голосов с группировкой по пользователям и сменам
+    static async getPublicVotesLog(req, res, next) {
+        try {
+            const Vote = require('../models/Vote');
+            const Shift = require('../models/Shift');
+            const axios = require('axios');
+
+            // Получаем все голоса
+            const allVotes = Vote.getAllWithFullInfo();
+
+            // Получаем все смены
+            const allShifts = Shift.getAll();
+            const shiftNames = allShifts.map(s => s.name);
+
+            // Получаем уникальные VK ID
+            const vkIds = [...new Set(allVotes.map(v => v.vk_id))];
+
+            let vkUsersMap = {};
+
+            // Получаем информацию из VK API
+            if (vkIds.length > 0) {
+                try {
+                    const VK_TOKEN = process.env.VK_TOKEN;
+                    const response = await axios.get('https://api.vk.com/method/users.get', {
+                        params: {
+                            user_ids: vkIds.join(','),
+                            fields: 'first_name,last_name',
+                            access_token: VK_TOKEN,
+                            v: '5.199'
+                        }
+                    });
+
+                    if (response.data.response) {
+                        response.data.response.forEach(user => {
+                            vkUsersMap[user.id] = {
+                                first_name: user.first_name,
+                                last_name: user.last_name
+                            };
+                        });
+                    }
+                } catch (vkError) {
+                    console.error('Error fetching VK user info:', vkError);
+                }
+            }
+
+            // Группируем голоса по пользователям
+            const userVotesMap = {};
+
+            allVotes.forEach(vote => {
+                // Пропускаем аннулированные голоса
+                if (vote.is_cancelled) return;
+
+                const key = `${vote.vk_id}_${vote.full_name}`;
+
+                if (!userVotesMap[key]) {
+                    userVotesMap[key] = {
+                        id: vote.id, // Используем ID первого голоса для сортировки
+                        vk_id: vote.vk_id,
+                        full_name: vote.full_name,
+                        vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
+                        vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null,
+                        created_at: vote.created_at,
+                        shifts: {}
+                    };
+                }
+
+                // Добавляем информацию о смене
+                userVotesMap[key].shifts[vote.shift_name] = true;
+            });
+
+            // Преобразуем в массив
+            const usersVotes = Object.values(userVotesMap);
+
+            res.json({
+                success: true,
+                votes: usersVotes,
+                shifts: shiftNames
+            });
+
+        } catch (error) {
+            next(error);
+        }
+    }
 }
 
 module.exports = StatsController;

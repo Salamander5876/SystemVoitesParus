@@ -1,25 +1,20 @@
 // Подключение к WebSocket
 const socket = io();
 
-let currentShiftId = null;
-let resultsChart = null;
-
 // Элементы DOM
 const elements = {
     votingStatus: document.getElementById('voting-status'),
     totalVotes: document.getElementById('total-votes'),
     uniqueVoters: document.getElementById('unique-voters'),
-    shiftButtons: document.getElementById('shift-buttons'),
-    noShift: document.getElementById('no-shift'),
-    candidatesList: document.getElementById('candidates-list'),
-    chartContainer: document.querySelector('.chart-container'),
-    recentVotes: document.getElementById('recent-votes')
+    votesLogBody: document.getElementById('votes-log-body')
 };
+
+let allShifts = [];
 
 // Инициализация
 async function init() {
     await loadStatus();
-    await loadShifts();
+    await loadVotesLog();
     setupWebSocket();
 }
 
@@ -51,263 +46,112 @@ function updateStatus(data) {
     elements.uniqueVoters.textContent = data.uniqueVoters || 0;
 }
 
-// Загрузка списка смен
-async function loadShifts() {
+// Загрузка журнала голосов
+async function loadVotesLog() {
     try {
-        const response = await fetch('/api/shifts');
+        const response = await fetch('/api/votes/public-log');
         const data = await response.json();
-        renderShifts(data.shifts);
-    } catch (error) {
-        console.error('Error loading shifts:', error);
-    }
-}
 
-// Отрисовка кнопок смен
-function renderShifts(shifts) {
-    elements.shiftButtons.innerHTML = '';
-
-    if (shifts.length === 0) {
-        elements.shiftButtons.innerHTML = '<p class="no-data">Смены не найдены</p>';
-        return;
-    }
-
-    shifts.forEach(shift => {
-        const button = document.createElement('button');
-        button.className = 'shift-btn';
-        button.textContent = shift.name;
-        button.onclick = () => selectShift(shift.id);
-        elements.shiftButtons.appendChild(button);
-    });
-}
-
-// Выбор смены
-async function selectShift(shiftId) {
-    currentShiftId = shiftId;
-
-    // Обновляем активную кнопку
-    document.querySelectorAll('.shift-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
-
-    // Подписываемся на обновления этой смены
-    socket.emit('subscribe_shift', shiftId);
-
-    // Загружаем данные смены
-    await loadShiftStats(shiftId);
-}
-
-// Загрузка статистики смены
-async function loadShiftStats(shiftId) {
-    try {
-        const response = await fetch(`/api/shifts/${shiftId}/stats`);
-        const data = await response.json();
-        renderShiftStats(data);
-    } catch (error) {
-        console.error('Error loading shift stats:', error);
-    }
-}
-
-// Отрисовка статистики смены
-function renderShiftStats(data) {
-    elements.noShift.style.display = 'none';
-    elements.candidatesList.style.display = 'block';
-    elements.chartContainer.style.display = 'block';
-
-    // Обновляем статистику
-    if (data.stats) {
-        elements.totalVotes.textContent = data.stats.total_votes || 0;
-        elements.uniqueVoters.textContent = data.stats.unique_voters || 0;
-    }
-
-    // Отрисовываем кандидатов
-    renderCandidates(data.candidates);
-
-    // Отрисовываем график
-    renderChart(data.candidates);
-
-    // Отрисовываем последние голоса
-    renderRecentVotes(data.recentVotes);
-}
-
-// Отрисовка списка кандидатов
-function renderCandidates(candidates) {
-    elements.candidatesList.innerHTML = '';
-
-    if (candidates.length === 0) {
-        elements.candidatesList.innerHTML = '<p class="no-data">Кандидаты не найдены</p>';
-        return;
-    }
-
-    candidates.forEach(candidate => {
-        const card = document.createElement('div');
-        card.className = 'candidate-card';
-
-        const totalVotes = candidate.vote_count || 0;
-
-        card.innerHTML = `
-            <div class="candidate-header">
-                <div class="candidate-name">${candidate.name}</div>
-            </div>
-            ${candidate.description ? `<p style="color: #666; margin-bottom: 15px;">${candidate.description}</p>` : ''}
-            <div class="candidate-stats">
-                <div class="stat-item">
-                    <div class="stat-item-label">Голосов</div>
-                    <div class="stat-item-value" style="font-size: 32px; color: #3498db;">${totalVotes}</div>
-                </div>
-            </div>
-        `;
-
-        elements.candidatesList.appendChild(card);
-    });
-}
-
-// Отрисовка графика
-function renderChart(candidates) {
-    const ctx = document.getElementById('results-chart');
-
-    if (resultsChart) {
-        resultsChart.destroy();
-    }
-
-    const labels = candidates.map(c => c.name);
-    const voteCounts = candidates.map(c => c.vote_count || 0);
-
-    resultsChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [
-                {
-                    label: 'Голосов',
-                    data: voteCounts,
-                    backgroundColor: 'rgba(52, 152, 219, 0.8)',
-                    borderColor: 'rgba(52, 152, 219, 1)',
-                    borderWidth: 2
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: true,
-            plugins: {
-                title: {
-                    display: true,
-                    text: 'Распределение голосов',
-                    font: { size: 16 }
-                },
-                legend: {
-                    display: true,
-                    position: 'top'
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    ticks: {
-                        stepSize: 1
-                    }
-                }
-            }
+        if (data.success) {
+            allShifts = data.shifts;
+            renderVotesLog(data.votes, data.shifts);
         }
-    });
+    } catch (error) {
+        console.error('Error loading votes log:', error);
+        elements.votesLogBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>';
+    }
 }
 
-// Отрисовка последних голосов
-function renderRecentVotes(votes) {
-    if (!votes || votes.length === 0) {
-        elements.recentVotes.innerHTML = '<div class="no-data">Голосов пока нет</div>';
+// Рендеринг таблицы голосов
+function renderVotesLog(votes, shifts) {
+    if (votes.length === 0) {
+        elements.votesLogBody.innerHTML = '<tr><td colspan="' + (5 + shifts.length) + '" style="text-align: center; color: #999;">Голосов пока нет</td></tr>';
         return;
     }
 
-    elements.recentVotes.innerHTML = '';
+    // Обновляем заголовки таблицы
+    const tableHead = document.querySelector('#votes-log-table thead tr');
+
+    // Очищаем существующие заголовки смен
+    const existingShiftColumns = tableHead.querySelectorAll('.shift-column');
+    existingShiftColumns.forEach(col => col.remove());
+
+    // Добавляем заголовки смен
+    shifts.forEach(shiftName => {
+        const th = document.createElement('th');
+        th.className = 'shift-column';
+        th.textContent = `Смена (${shiftName})`;
+        tableHead.appendChild(th);
+    });
+
+    // Сортируем голоса по ID (от новых к старым)
+    votes.sort((a, b) => b.id - a.id);
+
+    // Заполняем тело таблицы
+    elements.votesLogBody.innerHTML = '';
 
     votes.forEach(vote => {
-        const voteItem = document.createElement('div');
-        voteItem.className = 'vote-item';
+        const row = document.createElement('tr');
 
-        const time = new Date(vote.created_at).toLocaleTimeString('ru-RU', {
+        const date = new Date(vote.created_at).toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
+            second: '2-digit'
         });
 
-        voteItem.innerHTML = `
-            <div class="vote-info">
-                <div class="vote-nickname">${vote.nickname}</div>
-                <div class="vote-candidate">${vote.candidate_name}</div>
-            </div>
-            <span class="vote-type ${vote.vote_type}">${vote.vote_type === 'for' ? 'ЗА' : 'ПРОТИВ'}</span>
-            <span class="vote-time">${time}</span>
+        // Формируем имя из VK
+        let vkName = '';
+        if (vote.vk_first_name && vote.vk_last_name) {
+            vkName = `${vote.vk_first_name} ${vote.vk_last_name}`;
+        } else {
+            vkName = '<span style="color: #999;">—</span>';
+        }
+
+        const vkLink = `https://vk.com/id${vote.vk_id}`;
+
+        // Базовые колонки
+        let rowHTML = `
+            <td>${vote.id}</td>
+            <td>${date}</td>
+            <td>${vote.full_name}</td>
+            <td>${vkName}</td>
+            <td><a href="${vkLink}" target="_blank">${vote.vk_id}</a></td>
         `;
 
-        elements.recentVotes.appendChild(voteItem);
+        // Добавляем колонки для смен
+        shifts.forEach(shiftName => {
+            if (vote.shifts[shiftName]) {
+                rowHTML += '<td><span class="vote-status voted">Проголосовал</span></td>';
+            } else {
+                rowHTML += '<td><span class="vote-status not-voted">—</span></td>';
+            }
+        });
+
+        row.innerHTML = rowHTML;
+        elements.votesLogBody.appendChild(row);
     });
 }
 
 // Настройка WebSocket
 function setupWebSocket() {
-    socket.on('connect', () => {
-        console.log('Connected to WebSocket');
+    // Обновление статистики в реальном времени
+    socket.on('stats_update', (data) => {
+        elements.totalVotes.textContent = data.totalVotes || 0;
+        elements.uniqueVoters.textContent = data.uniqueVoters || 0;
     });
 
-    socket.on('new_vote', (data) => {
-        console.log('New vote:', data);
-
-        // Добавляем новый голос в ленту
-        addNewVoteToFeed(data);
-
-        // Обновляем статистику текущей смены
-        if (currentShiftId) {
-            loadShiftStats(currentShiftId);
-        }
-
-        // Обновляем общую статистику
-        loadStatus();
+    // Новый голос - перезагружаем таблицу
+    socket.on('new_vote', () => {
+        loadVotesLog();
     });
 
-    socket.on('voting_status_change', (data) => {
-        console.log('Status changed:', data);
-        loadStatus();
+    // Обновление статуса голосования
+    socket.on('voting_status_changed', (data) => {
+        updateStatus(data);
     });
-
-    socket.on('disconnect', () => {
-        console.log('Disconnected from WebSocket');
-    });
-}
-
-// Добавление нового голоса в ленту
-function addNewVoteToFeed(vote) {
-    const voteItem = document.createElement('div');
-    voteItem.className = 'vote-item';
-
-    const time = new Date(vote.timestamp).toLocaleTimeString('ru-RU', {
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-
-    voteItem.innerHTML = `
-        <div class="vote-info">
-            <div class="vote-nickname">${vote.nickname}</div>
-            <div class="vote-candidate">${vote.candidateName || ''}</div>
-        </div>
-        <span class="vote-type ${vote.voteType}">${vote.voteType === 'for' ? 'ЗА' : 'ПРОТИВ'}</span>
-        <span class="vote-time">${time}</span>
-    `;
-
-    // Удаляем "нет данных" если есть
-    const noData = elements.recentVotes.querySelector('.no-data');
-    if (noData) {
-        noData.remove();
-    }
-
-    // Добавляем в начало списка
-    elements.recentVotes.insertBefore(voteItem, elements.recentVotes.firstChild);
-
-    // Ограничиваем количество отображаемых голосов
-    const voteItems = elements.recentVotes.querySelectorAll('.vote-item');
-    if (voteItems.length > 20) {
-        voteItems[voteItems.length - 1].remove();
-    }
 }
 
 // Запуск при загрузке страницы
