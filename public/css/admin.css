@@ -206,6 +206,23 @@ body {
     }
 }
 
+.btn-reset-db {
+    padding: 8px 16px;
+    background: #95a5a6;
+    color: white;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 0.9em;
+    margin-right: 10px;
+    transition: all 0.3s;
+}
+
+.btn-reset-db:hover {
+    background: #e74c3c;
+    transform: scale(1.05);
+}
+
 .btn-logout {
     padding: 8px 16px;
     background: var(--danger-color);

@@ -71,6 +71,12 @@ class Candidate {
         return result.changes > 0;
     }
 
+    static decrementVoteCount(candidateId) {
+        const stmt = db.prepare(`UPDATE candidates SET vote_count = vote_count - 1 WHERE id = ? AND vote_count > 0`);
+        const result = stmt.run(candidateId);
+        return result.changes > 0;
+    }
+
     static getWithVotes(id) {
         const stmt = db.prepare(`
             SELECT c.*, s.name as shift_name,

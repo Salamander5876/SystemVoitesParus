@@ -51,4 +51,7 @@ router.post('/voters/clear', AdminController.clearVoters);
 router.post('/voters/reset-status', AdminController.resetVotersStatus);
 router.get('/export/voters', AdminController.exportVoters);
 
+// Сброс базы данных
+router.post('/database/reset', AdminController.resetDatabase);
+
 module.exports = router;

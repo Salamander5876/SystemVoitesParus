@@ -125,6 +125,8 @@ class Vote {
             SELECT
                 v.id,
                 v.shift_id,
+                v.candidate_id,
+                v.vote_type,
                 v.is_cancelled,
                 v.cancellation_reason,
                 v.cancelled_at,

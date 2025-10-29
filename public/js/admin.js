@@ -339,7 +339,9 @@ function renderAuditLog(votes) {
             row.classList.add('vote-cancelled');
         }
 
-        const date = new Date(vote.created_at).toLocaleString('ru-RU');
+        const date = new Date(vote.created_at).toLocaleString('ru-RU', {
+            timeZone: 'Asia/Chita'
+        });
         const vkLink = `https://vk.com/id${vote.vk_id}`;
 
         // Формируем имя из VK
@@ -641,7 +643,9 @@ function renderVoters(voters) {
     }
 
     voters.forEach(voter => {
-        const votedAt = voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU') : '-';
+        const votedAt = voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU', {
+            timeZone: 'Asia/Chita'
+        }) : '-';
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${voter.id}</td>
@@ -934,6 +938,52 @@ async function unpublishResults() {
     } catch (error) {
         console.error('Error unpublishing results:', error);
         showAlert('Ошибка скрытия результатов', 'error');
+    }
+}
+
+// Сброс базы данных
+async function resetDatabase() {
+    const firstConfirm = confirm('⚠️ ВНИМАНИЕ! Вы собираетесь ПОЛНОСТЬЮ ОЧИСТИТЬ базу данных!\n\nБудут удалены:\n- Все голоса\n- Все пользователи\n- Все смены и кандидаты\n- Список избирателей\n- Все настройки\n\nЭто действие НЕОБРАТИМО!\n\nПродолжить?');
+
+    if (!firstConfirm) {
+        return;
+    }
+
+    const secondConfirm = confirm('🚨 ПОСЛЕДНЕЕ ПРЕДУПРЕЖДЕНИЕ!\n\nВы ДЕЙСТВИТЕЛЬНО хотите УДАЛИТЬ ВСЕ ДАННЫЕ?\n\nВведите "ДА" для подтверждения будет следующим шагом.');
+
+    if (!secondConfirm) {
+        return;
+    }
+
+    const finalConfirmation = prompt('Для окончательного подтверждения введите слово: УДАЛИТЬ');
+
+    if (finalConfirmation !== 'УДАЛИТЬ') {
+        showAlert('Сброс отменен', 'info');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/database/reset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            showAlert('База данных успешно сброшена! Страница перезагрузится...', 'success');
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        } else {
+            showAlert(data.error || 'Ошибка сброса базы данных', 'error');
+        }
+    } catch (error) {
+        console.error('Error resetting database:', error);
+        showAlert('Ошибка сброса базы данных', 'error');
     }
 }
 

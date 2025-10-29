@@ -593,6 +593,15 @@ class AdminController {
                 return res.status(500).json({ error: 'Не удалось аннулировать голос' });
             }
 
+            // Уменьшаем счетчик кандидата (если это был голос за кандидата)
+            if (vote.vote_type === 'candidate' && vote.candidate_id) {
+                Candidate.decrementVoteCount(vote.candidate_id);
+                logger.info('Candidate vote count decremented after cancellation', {
+                    candidate_id: vote.candidate_id,
+                    vote_id: voteId
+                });
+            }
+
             // Сбрасываем статус избирателя (если список избирателей используется)
             const voterStats = EligibleVoter.getStats();
             if (voterStats.total > 0) {
@@ -692,6 +701,80 @@ class AdminController {
             });
 
         } catch (error) {
+            next(error);
+        }
+    }
+
+    // Полный сброс базы данных
+    static resetDatabase(req, res, next) {
+        try {
+            const db = require('../config/database');
+            const fs = require('fs');
+            const path = require('path');
+
+            logger.warn('Database reset initiated', {
+                admin_id: req.admin.id,
+                timestamp: new Date().toISOString()
+            });
+
+            // Список всех таблиц
+            const tables = [
+                'votes',
+                'users',
+                'candidates',
+                'shifts',
+                'eligible_voters',
+                'audit_logs',
+                'settings'
+            ];
+
+            // Отключаем foreign keys для удаления
+            db.exec('PRAGMA foreign_keys = OFF');
+
+            // Удаляем все данные из таблиц
+            tables.forEach(table => {
+                db.exec(`DELETE FROM ${table}`);
+                db.exec(`DELETE FROM sqlite_sequence WHERE name='${table}'`);
+            });
+
+            // Включаем обратно foreign keys
+            db.exec('PRAGMA foreign_keys = ON');
+
+            // Загружаем и выполняем seeds (начальные данные)
+            const seedsSQL = fs.readFileSync(
+                path.join(__dirname, '../database/seeds.sql'),
+                'utf8'
+            );
+            db.exec(seedsSQL);
+
+            // Пересоздаем администратора
+            const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+            const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
+            const existingAdmin = Admin.getByUsername(adminUsername);
+
+            if (!existingAdmin) {
+                Admin.create(adminUsername, adminPassword);
+            }
+
+            logger.warn('Database reset completed', {
+                admin_id: req.admin.id,
+                timestamp: new Date().toISOString()
+            });
+
+            // Отправляем WebSocket событие
+            if (req.app.get('io')) {
+                req.app.get('io').emit('database_reset', {
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            res.json({
+                success: true,
+                message: 'База данных успешно сброшена'
+            });
+
+        } catch (error) {
+            logger.error('Database reset error:', error);
             next(error);
         }
     }
