@@ -15,7 +15,6 @@ module.exports = {
     USER_STATES: {
         IDLE: 'idle',
         AWAITING_NAME: 'awaiting_name',
-        AWAITING_NICKNAME: 'awaiting_nickname',
         AWAITING_SHIFT: 'awaiting_shift',
         AWAITING_CANDIDATE: 'awaiting_candidate',
         AWAITING_CONFIRMATION: 'awaiting_confirmation'
@@ -37,7 +36,7 @@ module.exports = {
 
         ASK_NAME: 'Введите ваше ФИО (Фамилия Имя Отчество):',
 
-        ASK_NICKNAME: 'Придумайте псевдоним (он будет виден всем на сайте):',
+        NICKNAME_ASSIGNED: (nickname) => `✨ Вам присвоен псевдоним: *${nickname}*\nОн будет виден в результатах голосования и статистике.`,
 
         CHOOSE_SHIFT: 'Выберите смену для голосования:',
 

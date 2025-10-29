@@ -3,6 +3,22 @@ require('dotenv').config();
 // Установка часового пояса Asia/Chita
 process.env.TZ = 'Asia/Chita';
 
+// ---------- МАССИВЫ ДЛЯ ГЕНЕРАЦИИ ПСЕВДОНИМОВ ----------
+const adjectives = [
+    "Сияющий", "Лунный", "Звёздный", "Туманный", "Искрящийся",
+    "Серебристый", "Эфирный", "Солнечный", "Таинственный", "Мерцающий",
+    "Кристальный", "Волшебный", "Небесный", "Добрый", "Закатный"
+];
+
+const nouns = [
+    "Дух", "Эльф", "Феникс", "Единорог", "Грифон", "Дракон",
+    "Ангел", "Гном", "Сильф", "Леший", "Водяной", "Домовой",
+    "Светлячок", "Хранитель", "Странник", "Чародей", "Звёздочет",
+    "Лунатик", "Волшебник", "Кот", "Мудрец", "Герой", "Филин",
+    "Фавн", "Рыцарь", "Бард", "Морж", "Страж", "Вестник", "Мечтатель"
+];
+// ---------------------------------------------------------
+
 const { VK, Keyboard } = require('vk-io');
 const { QuestionManager } = require('vk-io-question');
 const axios = require('axios');
@@ -38,6 +54,42 @@ function updateUserState(userId, state, data = {}) {
 function resetUserState(userId) {
     userStates.set(userId, { state: USER_STATES.IDLE, data: {} });
 }
+
+// ---------------------------------------------------------
+// Генерация уникального псевдонима
+// ---------------------------------------------------------
+async function generateUniqueNickname() {
+    const used = new Set();
+
+    // Получаем уже занятые псевдонимы
+    try {
+        const { data } = await axios.get(`${API_URL}/users/nicknames`);
+        data.nicknames.forEach(n => used.add(n));
+    } catch (err) {
+        logger.warn('Не удалось получить список псевдонимов, продолжаем без проверки');
+    }
+
+    let nickname;
+    let attempts = 0;
+    const maxAttempts = 200;   // 15×30 = 450 базовых комбинаций
+
+    do {
+        const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+        const noun = nouns[Math.floor(Math.random() * nouns.length)];
+        nickname = `${adj} ${noun}`;
+
+        attempts++;
+        if (attempts > maxAttempts) {
+            // Если закончились комбинации – добавляем случайное число
+            const num = Math.floor(Math.random() * 900) + 100;
+            nickname = `${adj} ${noun} ${num}`;
+            break;
+        }
+    } while (used.has(nickname));
+
+    return nickname;
+}
+// ---------------------------------------------------------
 
 // API функции
 async function getVotingStatus() {
@@ -99,7 +151,7 @@ vk.updates.on('message_new', async (context) => {
     const state = getUserState(userId);
 
     try {
-        // Команды
+        // ----------------- Команды -----------------
         if (text === '/start' || text === 'Начать') {
             resetUserState(userId);
             return context.send(MESSAGES.WELCOME, {
@@ -140,7 +192,7 @@ vk.updates.on('message_new', async (context) => {
             try {
                 const { data } = await axios.get(`${API_URL}/users/${userId}/stats`);
                 const { user, stats, votes } = data;
-                let msg = `📊 Ваша статистика:\n\n`;
+                let msg = `Ваша статистика:\n\n`;
                 msg += `Псевдоним: ${user.nickname}\n`;
                 msg += `Всего голосов: ${stats.totalVotes}\n`;
                 msg += `Смен проголосовано: ${stats.shiftsVoted}\n`;
@@ -159,7 +211,7 @@ vk.updates.on('message_new', async (context) => {
             }
         }
 
-        // Начало голосования
+        // ----------------- Начало голосования -----------------
         if (text === '/vote' || text === BUTTONS.START_VOTING) {
             const status = await getVotingStatus();
             if (!status) return context.send(MESSAGES.ERROR);
@@ -173,7 +225,7 @@ vk.updates.on('message_new', async (context) => {
             });
         }
 
-        // Отмена
+        // ----------------- Отмена -----------------
         if (text === BUTTONS.CANCEL) {
             resetUserState(userId);
             return context.send('Отменено', {
@@ -182,7 +234,7 @@ vk.updates.on('message_new', async (context) => {
             });
         }
 
-        // Продолжить
+        // ----------------- Продолжить после голоса -----------------
         if (text === BUTTONS.CONTINUE) {
             if (state.data.fullName && state.data.nickname) {
                 updateUserState(userId, USER_STATES.AWAITING_SHIFT);
@@ -194,50 +246,56 @@ vk.updates.on('message_new', async (context) => {
             }
         }
 
-        // Завершить
+        // ----------------- Завершить -----------------
         if (text === BUTTONS.FINISH) {
             resetUserState(userId);
-            return context.send('Спасибо! 🎉', {
+            return context.send('Спасибо!', {
                 keyboard: Keyboard.builder()
                     .textButton({ label: BUTTONS.START_VOTING })
             });
         }
 
-        // Обработка состояний
+        // ----------------- Обработка состояний -----------------
         switch (state.state) {
+
+            // ----- ВВОД ФИО -----
             case USER_STATES.AWAITING_NAME:
                 if (text.length < 5 || !/^[а-яА-ЯёЁ\s]+$/.test(text)) {
                     return context.send(MESSAGES.ERROR_INVALID_NAME);
                 }
-                updateUserState(userId, USER_STATES.AWAITING_NICKNAME, { fullName: text });
-                return context.send(MESSAGES.ASK_NICKNAME, {
-                    keyboard: Keyboard.builder()
-                        .textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR })
+
+                // Генерируем уникальный псевдоним
+                const nickname = await generateUniqueNickname();
+
+                updateUserState(userId, USER_STATES.AWAITING_SHIFT, {
+                    fullName: text,
+                    nickname
                 });
 
-            case USER_STATES.AWAITING_NICKNAME:
-                if (text.length < 3 || text.length > 30) {
-                    return context.send(MESSAGES.ERROR_INVALID_NICKNAME);
-                }
                 const shifts = await getShifts();
                 if (shifts.length === 0) {
                     resetUserState(userId);
-                    return context.send('Нет смен');
+                    return context.send('Нет активных смен для голосования');
                 }
-                updateUserState(userId, USER_STATES.AWAITING_SHIFT, { nickname: text });
+
                 const kb = Keyboard.builder();
                 shifts.forEach(s => kb.textButton({ label: s.name }).row());
                 kb.textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR });
-                return context.send(MESSAGES.CHOOSE_SHIFT, { keyboard: kb });
 
+                return context.send(
+                    `${MESSAGES.NICKNAME_ASSIGNED(nickname)}\n\n${MESSAGES.CHOOSE_SHIFT}`,
+                    { keyboard: kb }
+                );
+
+            // ----- ВЫБОР СМЕНЫ -----
             case USER_STATES.AWAITING_SHIFT:
                 const allShifts = await getShifts();
                 const shift = allShifts.find(s => s.name === text);
                 if (!shift) return context.send('Неверная смена');
+
                 const candidates = await getCandidates(shift.id);
                 if (candidates.length === 0) return context.send('Нет кандидатов');
 
-                // Добавляем специальные варианты голосования
                 const allOptions = [
                     ...candidates,
                     { id: null, name: 'Против всех', is_special: true },
@@ -248,49 +306,46 @@ vk.updates.on('message_new', async (context) => {
                     shiftId: shift.id,
                     shiftName: shift.name
                 });
+
                 const kbCand = Keyboard.builder();
                 allOptions.forEach(c => kbCand.textButton({ label: c.name }).row());
                 kbCand.textButton({ label: BUTTONS.BACK, color: Keyboard.SECONDARY_COLOR });
                 return context.send(MESSAGES.CHOOSE_CANDIDATE, { keyboard: kbCand });
 
+            // ----- ВЫБОР КАНДИДАТА -----
             case USER_STATES.AWAITING_CANDIDATE:
                 if (text === BUTTONS.BACK) {
-                    updateUserState(userId, USER_STATES.AWAITING_NICKNAME);
-                    return;
+                    // Возврат к выбору смены (псевдоним уже есть)
+                    updateUserState(userId, USER_STATES.AWAITING_SHIFT);
+                    const shiftsBack = await getShifts();
+                    const kbBack = Keyboard.builder();
+                    shiftsBack.forEach(s => kbBack.textButton({ label: s.name }).row());
+                    kbBack.textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR });
+                    return context.send(MESSAGES.CHOOSE_SHIFT, { keyboard: kbBack });
                 }
 
-                // Получаем список всех вариантов (кандидаты + специальные)
                 const cands = await getCandidates(state.data.shiftId);
-                const specialOptions = [
-                    { id: null, name: 'Против всех' },
-                    { id: null, name: 'Воздержаться' }
-                ];
-                const allVoteOptions = [...cands, ...specialOptions];
+                const special = [{ id: null, name: 'Против всех' }, { id: null, name: 'Воздержаться' }];
+                const allVoteOptions = [...cands, ...special];
 
-                const selectedOption = allVoteOptions.find(c => c.name === text);
-                if (!selectedOption) return context.send('Неверный вариант');
+                const selected = allVoteOptions.find(c => c.name === text);
+                if (!selected) return context.send('Неверный вариант');
 
-                // Определяем тип голоса
                 let voteType = 'candidate';
-                let candidateId = selectedOption.id;
+                let candidateId = selected.id;
 
-                if (text === 'Против всех') {
-                    voteType = 'against_all';
-                    candidateId = null;
-                } else if (text === 'Воздержаться') {
-                    voteType = 'abstain';
-                    candidateId = null;
-                }
+                if (text === 'Против всех') { voteType = 'against_all'; candidateId = null; }
+                else if (text === 'Воздержаться') { voteType = 'abstain'; candidateId = null; }
 
                 updateUserState(userId, USER_STATES.AWAITING_CONFIRMATION, {
-                    candidateId: candidateId,
+                    candidateId,
                     candidateName: text,
-                    voteType: voteType
+                    voteType
                 });
 
-                let confirmMsg = `Подтвердите ваш выбор:\n\n`;
-                confirmMsg += `Смена: ${state.data.shiftName}\n`;
-                confirmMsg += `Ваш голос: ${text}`;
+                const confirmMsg = `Подтвердите ваш выбор:\n\n` +
+                    `Смена: ${state.data.shiftName}\n` +
+                    `Ваш голос: ${text}`;
 
                 return context.send(confirmMsg, {
                     keyboard: Keyboard.builder()
@@ -298,27 +353,46 @@ vk.updates.on('message_new', async (context) => {
                         .textButton({ label: BUTTONS.CHANGE, color: Keyboard.SECONDARY_COLOR })
                 });
 
+            // ----- ПОДТВЕРЖДЕНИЕ -----
             case USER_STATES.AWAITING_CONFIRMATION:
                 if (text === BUTTONS.CHANGE) {
                     updateUserState(userId, USER_STATES.AWAITING_CANDIDATE);
                     return;
                 }
-                if (text !== BUTTONS.CONFIRM) return context.send('Нажмите Подтвердить');
+                if (text !== BUTTONS.CONFIRM) return context.send('Нажмите «Подтвердить»');
 
                 const voteData = state.data;
-                const result = await submitVote(userId, voteData.fullName, voteData.nickname, voteData.shiftId, voteData.candidateId, voteData.voteType);
+                const result = await submitVote(
+                    userId,
+                    voteData.fullName,
+                    voteData.nickname,
+                    voteData.shiftId,
+                    voteData.candidateId,
+                    voteData.voteType
+                );
 
                 if (result.success) {
-                    updateUserState(userId, USER_STATES.AWAITING_SHIFT, { fullName: voteData.fullName, nickname: voteData.nickname });
-                    return context.send(MESSAGES.VOTE_SUCCESS(voteData.nickname, voteData.shiftName, voteData.candidateName), {
-                        keyboard: Keyboard.builder()
-                            .textButton({ label: BUTTONS.CONTINUE, color: Keyboard.POSITIVE_COLOR })
-                            .textButton({ label: BUTTONS.FINISH, color: Keyboard.SECONDARY_COLOR })
+                    // Сохраняем ФИО + псевдоним для дальнейшего голосования
+                    updateUserState(userId, USER_STATES.AWAITING_SHIFT, {
+                        fullName: voteData.fullName,
+                        nickname: voteData.nickname
                     });
+
+                    return context.send(
+                        MESSAGES.VOTE_SUCCESS(voteData.nickname, voteData.shiftName, voteData.candidateName),
+                        {
+                            keyboard: Keyboard.builder()
+                                .textButton({ label: BUTTONS.CONTINUE, color: Keyboard.POSITIVE_COLOR })
+                                .textButton({ label: BUTTONS.FINISH, color: Keyboard.SECONDARY_COLOR })
+                        }
+                    );
                 } else {
                     await context.send(`Ошибка: ${result.error}`);
                     if (result.error.includes('голосовали')) {
-                        updateUserState(userId, USER_STATES.AWAITING_SHIFT, { fullName: voteData.fullName, nickname: voteData.nickname });
+                        updateUserState(userId, USER_STATES.AWAITING_SHIFT, {
+                            fullName: voteData.fullName,
+                            nickname: voteData.nickname
+                        });
                     }
                 }
                 break;
@@ -330,35 +404,33 @@ vk.updates.on('message_new', async (context) => {
     }
 });
 
-// HTTP сервер для приема уведомлений от админ-панели
+// ---------------------------------------------------------
+// HTTP-сервер для уведомлений от админ-панели
+// ---------------------------------------------------------
 const express = require('express');
 const botApp = express();
 const BOT_PORT = process.env.BOT_API_PORT || 3001;
 
 botApp.use(express.json());
 
-// Endpoint для уведомления об аннулировании голоса
 botApp.post('/api/notify-vote-cancelled', async (req, res) => {
     try {
         const { vkId, shiftName, reason } = req.body;
-
         if (!vkId || !shiftName || !reason) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
-        // Отправляем сообщение пользователю
         await vk.api.messages.send({
             user_id: vkId,
-            message: `⚠️ Уведомление об аннулировании голоса\n\n` +
+            message: `Уведомление об аннулировании голоса\n\n` +
                 `Ваш голос на смене "${shiftName}" был аннулирован администратором.\n\n` +
                 `Причина: ${reason}\n\n` +
-                `Теперь вы можете проголосовать заново на этой смене. Используйте команду /start для начала голосования.`,
+                `Теперь вы можете проголосовать заново. Используйте /start.`,
             random_id: Math.floor(Math.random() * 1000000)
         });
 
-        logger.info(`Vote cancellation notification sent to user ${vkId} for shift ${shiftName}`);
+        logger.info(`Vote cancellation notification sent to ${vkId} (shift: ${shiftName})`);
         res.json({ success: true });
-
     } catch (error) {
         logger.error('Error sending cancellation notification:', error);
         res.status(500).json({ error: 'Failed to send notification' });
@@ -367,18 +439,20 @@ botApp.post('/api/notify-vote-cancelled', async (req, res) => {
 
 botApp.listen(BOT_PORT, () => {
     logger.info(`Bot API server listening on port ${BOT_PORT}`);
-    console.log(`✅ Bot API сервер запущен на порту ${BOT_PORT}`);
+    console.log(`Bot API сервер запущен на порту ${BOT_PORT}`);
 });
 
-// Запуск VK бота
+// ---------------------------------------------------------
+// Запуск VK-бота
+// ---------------------------------------------------------
 vk.updates.start()
     .then(() => {
         logger.info('VK Bot started (polling)');
-        console.log('✅ VK Бот запущен (polling)!');
+        console.log('VK Бот запущен (polling)!');
     })
     .catch((error) => {
         logger.error('Bot error:', error);
-        console.error('❌ Ошибка:', error.message);
+        console.error('Ошибка:', error.message);
     });
 
 module.exports = vk;

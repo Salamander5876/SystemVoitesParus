@@ -40,4 +40,17 @@ router.get('/votes/public-log', StatsController.getPublicVotesLog);
 // Результаты выборов
 router.get('/election-results', StatsController.getElectionResults);
 
+// Получить все псевдонимы (для проверки уникальности при генерации)
+router.get('/users/nicknames', async (req, res) => {
+    try {
+        const db = req.app.locals.db; // Получаем db из app
+        const users = await db.all('SELECT nickname FROM users WHERE nickname IS NOT NULL AND nickname != ""');
+        const nicknames = users.map(u => u.nickname).filter(Boolean);
+        res.json({ nicknames });
+    } catch (error) {
+        console.error('Error fetching nicknames:', error);
+        res.status(500).json({ error: 'Database error' });
+    }
+});
+
 module.exports = router;
