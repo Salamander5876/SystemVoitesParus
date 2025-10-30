@@ -12,11 +12,24 @@
     <div class="container">
         <header class="header">
             <h1>Выборы старшего вожатого</h1>
-            <h2>Лагерь "Парус" 2025</h2>
+            <h2>Лагерь "Парус" 2026</h2>
             <div class="status-bar">
                 <div id="voting-status" class="status">Загрузка...</div>
             </div>
         </header>
+
+        <!-- Секция скачивания итоговой ведомости (показывается после публикации результатов) -->
+        <section id="download-section" class="download-section" style="display: none;">
+            <div class="download-card">
+                <div class="download-icon"></div>
+                
+                <p>Результаты опубликованы! Вы можете скачать полную итоговую ведомость голосования.</p>
+                <button class="btn-download" onclick="downloadResults()">
+                    <span class="btn-icon">⬇️</span>
+                    Скачать ведомость (Excel)
+                </button>
+            </div>
+        </section>
 
         <main class="main-content">
             <!-- Секция результатов выборов (показывается когда опубликованы) -->
@@ -62,7 +75,7 @@
         </main>
 
         <footer class="footer">
-            <p>&copy; 2025 Лагерь "Парус". Система голосования.</p>
+            <p>&copy; 2026 Лагерь "Парус". Система голосования.</p>
             <a href="/admin">Административная панель</a>
         </footer>
     </div>

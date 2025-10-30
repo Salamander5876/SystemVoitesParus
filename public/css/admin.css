@@ -623,6 +623,124 @@ table tr:hover {
     color: var(--primary-color);
 }
 
+/* Улучшенные стили для кнопок управления голосованием */
+.control-buttons {
+    display: flex;
+    gap: 15px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+}
+
+.control-buttons .btn {
+    flex: 1;
+    min-width: 150px;
+    padding: 14px 24px;
+    font-size: 1em;
+    font-weight: 600;
+    border-radius: 10px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    position: relative;
+    overflow: hidden;
+}
+
+.control-buttons .btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.control-buttons .btn:hover::before {
+    width: 300px;
+    height: 300px;
+}
+
+.control-buttons .btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+}
+
+.control-buttons .btn:active {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Градиенты для кнопок управления */
+.control-buttons .btn-success {
+    background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+    border: none;
+}
+
+.control-buttons .btn-success:hover {
+    background: linear-gradient(135deg, #27ae60 0%, #229954 100%);
+}
+
+.control-buttons .btn-warning {
+    background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+    border: none;
+}
+
+.control-buttons .btn-warning:hover {
+    background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+}
+
+.control-buttons .btn-danger {
+    background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+    border: none;
+}
+
+.control-buttons .btn-danger:hover {
+    background: linear-gradient(135deg, #c0392b 0%, #a93226 100%);
+}
+
+.control-buttons .btn-secondary {
+    background: linear-gradient(135deg, #95a5a6 0%, #7f8c8d 100%);
+    border: none;
+}
+
+.control-buttons .btn-secondary:hover {
+    background: linear-gradient(135deg, #7f8c8d 0%, #65757a 100%);
+}
+
+.control-buttons .btn-primary {
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
+    border: none;
+}
+
+.control-buttons .btn-primary:hover {
+    background: linear-gradient(135deg, #2980b9 0%, #21618c 100%);
+}
+
+/* Большая кнопка для "Опубликовать результаты" */
+.control-buttons .btn-large {
+    font-size: 1.15em;
+    padding: 16px 32px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Анимация пульсации для важных кнопок */
+@keyframes pulse {
+    0%, 100% {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    50% {
+        box-shadow: 0 4px 20px rgba(52, 152, 219, 0.5);
+    }
+}
+
+.control-buttons .btn-primary.btn-large {
+    animation: pulse 2s infinite;
+}
+
 /* Responsive */
 @media (max-width: 1024px) {
     .header-content {
@@ -668,10 +786,12 @@ table tr:hover {
 
     .control-buttons {
         flex-direction: column;
+        gap: 12px;
     }
 
-    .btn {
+    .control-buttons .btn {
         width: 100%;
+        min-width: auto;
     }
 
     .form-row {

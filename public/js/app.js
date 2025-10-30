@@ -122,10 +122,12 @@ async function loadElectionResults() {
 
         const resultsSection = document.getElementById('results-section');
         const resultsContainer = document.getElementById('results-container');
+        const downloadSection = document.getElementById('download-section');
 
         if (data.success && data.published) {
-            // Результаты опубликованы - показываем их
+            // Результаты опубликованы - показываем их и секцию скачивания
             resultsSection.style.display = 'block';
+            downloadSection.style.display = 'block';
             resultsContainer.innerHTML = '';
 
             data.results.forEach(shiftResult => {
@@ -217,6 +219,7 @@ async function loadElectionResults() {
         } else {
             // Результаты не опубликованы
             resultsSection.style.display = 'none';
+            downloadSection.style.display = 'none';
         }
     } catch (error) {
         console.error('Error loading election results:', error);
@@ -244,6 +247,48 @@ function setupWebSocket() {
     socket.on('results_published', () => {
         loadElectionResults();
     });
+}
+
+// Функция скачивания итоговой ведомости
+async function downloadResults() {
+    try {
+        const response = await fetch('/api/admin/export-votes', {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Ошибка при скачивании файла');
+        }
+
+        // Получаем blob
+        const blob = await response.blob();
+
+        // Создаем ссылку для скачивания
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+
+        // Генерируем имя файла с датой
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        a.download = `Итоговая_ведомость_${dateStr}.xlsx`;
+
+        // Триггерим скачивание
+        document.body.appendChild(a);
+        a.click();
+
+        // Очищаем
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        console.log('Файл успешно скачан');
+    } catch (error) {
+        console.error('Error downloading results:', error);
+        alert('Ошибка при скачивании файла. Попробуйте позже.');
+    }
 }
 
 // Запуск при загрузке страницы

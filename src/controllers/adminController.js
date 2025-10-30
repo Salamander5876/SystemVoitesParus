@@ -281,11 +281,16 @@ class AdminController {
             // ===== ЛИСТ 1: ГОЛОСА =====
             const votesData = [];
 
+            // Примечание о рандомизации
+            votesData.push(['⚠️ ПРИМЕЧАНИЕ: Порядок строк рандомизирован для обеспечения анонимности голосования']);
+            votesData.push(['']); // Пустая строка
+
             // Заголовок
             const votesHeader = ['Псевдоним', ...shiftNames];
             votesData.push(votesHeader);
 
-            // Данные
+            // Данные - сначала собираем все строки
+            const dataRows = [];
             groupedVotes.forEach(voter => {
                 const row = [voter.nickname];
 
@@ -303,17 +308,36 @@ class AdminController {
                     }
                 });
 
-                votesData.push(row);
+                dataRows.push(row);
             });
+
+            // РАНДОМИЗАЦИЯ: Перемешиваем строки для анонимности (алгоритм Fisher-Yates)
+            for (let i = dataRows.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [dataRows[i], dataRows[j]] = [dataRows[j], dataRows[i]];
+            }
+
+            // Добавляем перемешанные строки в данные
+            dataRows.forEach(row => votesData.push(row));
 
             // Создаём workbook
             const workbook = XLSX.utils.book_new();
 
             // Лист 1: Голоса
             const votesWorksheet = XLSX.utils.aoa_to_sheet(votesData);
-            const votesColWidths = [{ wch: 20 }]; // Псевдоним
+
+            // Настраиваем ширину столбцов
+            const votesColWidths = [{ wch: 80 }]; // Первый столбец шире для примечания
             shiftNames.forEach(() => votesColWidths.push({ wch: 25 })); // Смены
             votesWorksheet['!cols'] = votesColWidths;
+
+            // Объединяем ячейки для примечания (первая строка)
+            if (!votesWorksheet['!merges']) votesWorksheet['!merges'] = [];
+            votesWorksheet['!merges'].push({
+                s: { r: 0, c: 0 }, // start: row 0, col 0
+                e: { r: 0, c: shiftNames.length } // end: row 0, last column
+            });
+
             XLSX.utils.book_append_sheet(workbook, votesWorksheet, 'Голоса');
 
             // ===== ЛИСТ 2: ИТОГИ =====
