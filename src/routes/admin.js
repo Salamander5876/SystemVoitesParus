@@ -54,4 +54,7 @@ router.get('/export/voters', AdminController.exportVoters);
 // Сброс базы данных
 router.post('/database/reset', AdminController.resetDatabase);
 
+// Смена пароля
+router.post('/change-password', AdminController.changePassword);
+
 module.exports = router;

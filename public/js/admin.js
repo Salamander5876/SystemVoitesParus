@@ -1001,6 +1001,60 @@ async function resetDatabase() {
     }
 }
 
+// ===== CHANGE PASSWORD =====
+function showChangePasswordModal() {
+    document.getElementById('change-password-form').reset();
+    document.getElementById('change-password-modal').classList.add('active');
+}
+
+document.getElementById('change-password-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const oldPassword = document.getElementById('old-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+
+    // Проверка на клиенте
+    if (newPassword !== confirmPassword) {
+        showAlert('Новый пароль и подтверждение не совпадают', 'error');
+        return;
+    }
+
+    if (newPassword.length < 6) {
+        showAlert('Новый пароль должен содержать минимум 6 символов', 'error');
+        return;
+    }
+
+    if (!confirm('Вы уверены, что хотите изменить пароль? После этого вам нужно будет войти заново.')) {
+        return;
+    }
+
+    try {
+        const response = await apiCall('/change-password', 'POST', {
+            oldPassword,
+            newPassword,
+            confirmPassword
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showAlert('Пароль успешно изменён. Сейчас вы будете перенаправлены на страницу входа.', 'success');
+            closeModal('change-password-modal');
+
+            // Выход через 2 секунды
+            setTimeout(() => {
+                logout();
+            }, 2000);
+        } else {
+            showAlert(result.error || 'Ошибка при смене пароля', 'error');
+        }
+    } catch (error) {
+        console.error('Password change error:', error);
+        showAlert('Ошибка при смене пароля', 'error');
+    }
+});
+
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
 

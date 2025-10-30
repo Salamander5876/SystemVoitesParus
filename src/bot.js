@@ -540,35 +540,84 @@ botApp.post('/api/notify-vote-cancelled', async (req, res) => {
     }
 });
 
-// Новый endpoint для уведомления об аннулировании ВСЕХ голосов
-botApp.post('/api/notify-all-votes-cancelled', async (req, res) => {
-    try {
-        const { vkId, reason, votesCount } = req.body;
-        if (!vkId || !reason) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        await vk.api.messages.send({
-            user_id: vkId,
-            message: `⚠️ Уведомление об аннулировании голосов\n\n` +
-                `Все ваши голоса (${votesCount || 'все'}) были аннулированы администратором.\n\n` +
-                `Причина: ${reason}\n\n` +
-                `Теперь вы можете проголосовать заново. Используйте /start.`,
-            random_id: Math.floor(Math.random() * 1000000)
-        });
-
-        logger.info(`All votes cancellation notification sent to ${vkId} (count: ${votesCount})`);
-        res.json({ success: true });
-    } catch (error) {
-        logger.error('Error sending all votes cancellation notification:', error);
-        res.status(500).json({ error: 'Failed to send notification' });
-    }
-});
+// Примечание: Старый endpoint /api/notify-all-votes-cancelled удалён
+// Теперь используется система очереди сообщений (message_queue)
 
 botApp.listen(BOT_PORT, () => {
     logger.info(`Bot API server listening on port ${BOT_PORT}`);
     console.log(`Bot API сервер запущен на порту ${BOT_PORT}`);
 });
+
+// ---------------------------------------------------------
+// Обработчик очереди сообщений (запускается каждую минуту)
+// ---------------------------------------------------------
+const MessageQueue = require('./models/MessageQueue');
+
+async function processMessageQueue() {
+    try {
+        const pendingMessages = MessageQueue.getPending(50); // Берём до 50 сообщений за раз
+
+        if (pendingMessages.length === 0) {
+            return; // Нет сообщений в очереди
+        }
+
+        logger.info(`Processing ${pendingMessages.length} messages from queue`);
+
+        for (const msg of pendingMessages) {
+            try {
+                // Отправляем сообщение через VK API
+                await vk.api.messages.send({
+                    user_id: msg.vk_id,
+                    message: msg.message,
+                    random_id: Math.floor(Math.random() * 1000000)
+                });
+
+                // Отмечаем как отправленное
+                MessageQueue.markAsSent(msg.id);
+                logger.info(`Message sent successfully`, {
+                    message_id: msg.id,
+                    vk_id: msg.vk_id
+                });
+
+            } catch (sendError) {
+                // Увеличиваем счётчик попыток
+                MessageQueue.incrementAttempts(msg.id);
+
+                // Если превышен лимит попыток, отмечаем как failed
+                if (msg.attempts + 1 >= msg.max_attempts) {
+                    MessageQueue.markAsFailed(msg.id, sendError.message);
+                    logger.error(`Message failed after ${msg.max_attempts} attempts`, {
+                        message_id: msg.id,
+                        vk_id: msg.vk_id,
+                        error: sendError.message
+                    });
+                } else {
+                    logger.warn(`Message send failed, will retry`, {
+                        message_id: msg.id,
+                        vk_id: msg.vk_id,
+                        attempt: msg.attempts + 1,
+                        error: sendError.message
+                    });
+                }
+            }
+        }
+
+        // Очищаем старые отправленные сообщения (старше 7 дней)
+        const cleanedUp = MessageQueue.cleanupOld(7);
+        if (cleanedUp > 0) {
+            logger.info(`Cleaned up ${cleanedUp} old messages from queue`);
+        }
+
+    } catch (error) {
+        logger.error('Error processing message queue:', error);
+    }
+}
+
+// Запускаем обработчик очереди каждую минуту
+setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
+
+// Запускаем первую обработку сразу после старта (через 5 секунд)
+setTimeout(processMessageQueue, 5000);
 
 // ---------------------------------------------------------
 // Запуск VK-бота
@@ -577,6 +626,7 @@ vk.updates.start()
     .then(() => {
         logger.info('VK Bot started (polling)');
         console.log('VK Бот запущен (polling)!');
+        console.log('Обработчик очереди сообщений запущен (каждую минуту)');
     })
     .catch((error) => {
         logger.error('Bot error:', error);

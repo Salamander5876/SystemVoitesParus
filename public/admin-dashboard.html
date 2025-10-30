@@ -30,6 +30,7 @@
             <div class="user-info">
                 <span id="admin-username">Администратор</span>
                 <button class="btn-reset-db" onclick="resetDatabase()" title="Полный сброс базы данных">🗑️ Сбросить БД</button>
+                <button class="btn-change-password" onclick="showChangePasswordModal()">🔐 Сменить пароль</button>
                 <button class="btn-logout" onclick="logout()">Выйти</button>
             </div>
         </div>
@@ -329,6 +330,34 @@
                 <div class="form-actions">
                     <button type="button" class="btn btn-secondary" onclick="closeModal('cancel-vote-modal')">Отмена</button>
                     <button type="submit" class="btn btn-danger">Аннулировать голос</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for Change Password -->
+    <div id="change-password-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Смена пароля</h2>
+                <button class="modal-close" onclick="closeModal('change-password-modal')">&times;</button>
+            </div>
+            <form id="change-password-form">
+                <div class="form-group">
+                    <label>Текущий пароль*</label>
+                    <input type="password" name="oldPassword" id="old-password" required autocomplete="current-password">
+                </div>
+                <div class="form-group">
+                    <label>Новый пароль* (минимум 6 символов)</label>
+                    <input type="password" name="newPassword" id="new-password" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-group">
+                    <label>Подтвердите новый пароль*</label>
+                    <input type="password" name="confirmPassword" id="confirm-password" required minlength="6" autocomplete="new-password">
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal('change-password-modal')">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Изменить пароль</button>
                 </div>
             </form>
         </div>

@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS eligible_voters (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Таблица очереди сообщений для отправки через бота
+CREATE TABLE IF NOT EXISTS message_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vk_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    error_message TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    sent_at DATETIME
+);
+
 -- Индексы для оптимизации
 CREATE INDEX IF NOT EXISTS idx_users_vk_id ON users(vk_id);
 CREATE INDEX IF NOT EXISTS idx_votes_user_id ON votes(user_id);
@@ -98,6 +111,8 @@ CREATE INDEX IF NOT EXISTS idx_votes_is_cancelled ON votes(is_cancelled);
 CREATE INDEX IF NOT EXISTS idx_candidates_shift_id ON candidates(shift_id);
 CREATE INDEX IF NOT EXISTS idx_shifts_is_active ON shifts(is_active);
 CREATE INDEX IF NOT EXISTS idx_eligible_voters_normalized ON eligible_voters(full_name_normalized);
+CREATE INDEX IF NOT EXISTS idx_message_queue_status ON message_queue(status);
+CREATE INDEX IF NOT EXISTS idx_message_queue_created_at ON message_queue(created_at);
 
 -- Partial unique index для голосов: уникальность только для неаннулированных голосов
 -- Это позволяет пользователям голосовать повторно после аннулирования их голосов

@@ -6,6 +6,7 @@ const Vote = require('../models/Vote');
 const User = require('../models/User');
 const Settings = require('../models/Settings');
 const EligibleVoter = require('../models/EligibleVoter');
+const MessageQueue = require('../models/MessageQueue');
 const logger = require('../utils/logger');
 
 class AdminController {
@@ -764,23 +765,20 @@ class AdminController {
                 req.ip
             );
 
-            // Отправляем одно уведомление о том, что ВСЕ голоса аннулированы
+            // Добавляем уведомление в очередь для отправки через бота
             try {
-                const botApiUrl = process.env.BOT_API_URL || 'http://localhost:3001';
-                const fetch = require('node-fetch');
+                const message = `⚠️ Уведомление об аннулировании голосов\n\n` +
+                    `Все ваши голоса (${cancelledCount}) были аннулированы администратором.\n\n` +
+                    `Причина: ${reason.trim()}\n\n` +
+                    `Теперь вы можете проголосовать заново. Используйте /start.`;
 
-                await fetch(`${botApiUrl}/api/notify-all-votes-cancelled`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        vkId: vkId.toString(),
-                        reason: reason.trim(),
-                        votesCount: cancelledCount
-                    })
+                MessageQueue.enqueue(vkId.toString(), message);
+                logger.info('Cancellation notification queued', {
+                    vk_id: vkId,
+                    cancelled_count: cancelledCount
                 });
-            } catch (notifyError) {
-                // Не прерываем выполнение, если уведомление не отправилось
-                console.error('Failed to send VK notification:', notifyError);
+            } catch (queueError) {
+                logger.error('Failed to queue notification:', queueError);
             }
 
             res.json({
@@ -862,6 +860,11 @@ class AdminController {
                 timestamp: new Date().toISOString()
             });
 
+            // Сохраняем текущий пароль администратора перед сбросом
+            const currentAdmin = Admin.getById(req.admin.id);
+            const savedPasswordHash = currentAdmin ? currentAdmin.password_hash : null;
+            const savedUsername = currentAdmin ? currentAdmin.username : (process.env.ADMIN_USERNAME || 'admin');
+
             // Список всех таблиц
             const tables = [
                 'votes',
@@ -885,6 +888,19 @@ class AdminController {
             // Включаем обратно foreign keys
             db.exec('PRAGMA foreign_keys = ON');
 
+            // Убеждаемся, что partial unique index существует (для поддержки повторного голосования после аннулирования)
+            try {
+                db.exec('DROP INDEX IF EXISTS idx_unique_active_votes');
+                db.exec(`
+                    CREATE UNIQUE INDEX idx_unique_active_votes
+                    ON votes(user_id, shift_id)
+                    WHERE is_cancelled = 0
+                `);
+                logger.info('Partial unique index recreated');
+            } catch (indexError) {
+                logger.warn('Could not recreate partial unique index:', indexError.message);
+            }
+
             // Загружаем и выполняем seeds (начальные данные)
             const seedsSQL = fs.readFileSync(
                 path.join(__dirname, '../database/seeds.sql'),
@@ -892,13 +908,29 @@ class AdminController {
             );
             db.exec(seedsSQL);
 
-            // Пересоздаем администратора
-            const adminUsername = process.env.ADMIN_USERNAME || 'admin';
-            const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
-            const existingAdmin = Admin.getByUsername(adminUsername);
+            // Пересоздаем администратора с сохраненным паролем
+            const existingAdmin = Admin.getByUsername(savedUsername);
 
-            if (!existingAdmin) {
-                Admin.create(adminUsername, adminPassword);
+            if (savedPasswordHash) {
+                // Восстанавливаем администратора с сохраненным паролем
+                if (existingAdmin) {
+                    // Обновляем существующего администратора сохраненным хешем пароля
+                    db.prepare('UPDATE admins SET password_hash = ? WHERE id = ?')
+                        .run(savedPasswordHash, existingAdmin.id);
+                    logger.info('Admin password restored after database reset');
+                } else {
+                    // Создаем администратора с сохраненным хешем пароля
+                    db.prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)')
+                        .run(savedUsername, savedPasswordHash);
+                    logger.info('Admin recreated with saved password after database reset');
+                }
+            } else {
+                // Если по какой-то причине не удалось сохранить пароль, используем дефолтный
+                const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
+                if (!existingAdmin) {
+                    Admin.create(savedUsername, adminPassword);
+                    logger.warn('Admin created with default password (saved password not available)');
+                }
             }
 
             logger.warn('Database reset completed', {
@@ -920,6 +952,60 @@ class AdminController {
 
         } catch (error) {
             logger.error('Database reset error:', error);
+            next(error);
+        }
+    }
+
+    // Смена пароля администратора
+    static async changePassword(req, res, next) {
+        try {
+            const { oldPassword, newPassword, confirmPassword } = req.body;
+
+            // Валидация входных данных
+            if (!oldPassword || !newPassword || !confirmPassword) {
+                return res.status(400).json({ error: 'Все поля обязательны для заполнения' });
+            }
+
+            if (newPassword !== confirmPassword) {
+                return res.status(400).json({ error: 'Новый пароль и подтверждение не совпадают' });
+            }
+
+            if (newPassword.length < 6) {
+                return res.status(400).json({ error: 'Новый пароль должен содержать минимум 6 символов' });
+            }
+
+            // Проверяем старый пароль
+            const admin = Admin.getByUsername(req.admin.username);
+            const bcrypt = require('bcryptjs');
+            const isOldPasswordValid = await bcrypt.compare(oldPassword, admin.password_hash);
+
+            if (!isOldPasswordValid) {
+                return res.status(401).json({ error: 'Неверный текущий пароль' });
+            }
+
+            // Меняем пароль
+            await Admin.changePassword(req.admin.id, newPassword);
+
+            // Логируем действие
+            Admin.logAction(
+                req.admin.id,
+                'PASSWORD_CHANGED',
+                'Администратор изменил свой пароль',
+                req.ip
+            );
+
+            logger.info('Admin password changed', {
+                admin_id: req.admin.id,
+                username: req.admin.username
+            });
+
+            res.json({
+                success: true,
+                message: 'Пароль успешно изменён. Пожалуйста, войдите заново.'
+            });
+
+        } catch (error) {
+            logger.error('Password change error:', error);
             next(error);
         }
     }
