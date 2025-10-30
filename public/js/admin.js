@@ -272,13 +272,11 @@ function renderCandidates(candidates) {
     tbody.innerHTML = '';
 
     candidates.forEach(candidate => {
-        const voteCount = candidate.vote_count || 0;
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${candidate.id}</td>
             <td>${candidate.shift_name}</td>
             <td>${candidate.name}</td>
-            <td><span class="badge badge-primary">${voteCount}</span></td>
             <td class="table-actions">
                 <button class="btn btn-sm btn-danger" onclick="deleteCandidate(${candidate.id})">
                     Удалить
@@ -329,7 +327,7 @@ function renderAuditLog(votes) {
     tbody.innerHTML = '';
 
     if (votes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;">Голосов пока нет</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Голосов пока нет</td></tr>';
         return;
     }
 
@@ -342,31 +340,32 @@ function renderAuditLog(votes) {
         const date = new Date(vote.created_at).toLocaleString('ru-RU', {
             timeZone: 'Asia/Chita'
         });
-        const vkLink = `https://vk.com/id${vote.vk_id}`;
 
-        // Формируем имя из VK
-        let vkName = '';
+        // Формируем ссылку на профиль VK
+        let vkProfile = '';
         if (vote.vk_first_name && vote.vk_last_name) {
-            vkName = `${vote.vk_first_name} ${vote.vk_last_name}`;
+            const vkName = `${vote.vk_first_name} ${vote.vk_last_name}`;
+            const vkLink = `https://vk.com/id${vote.vk_id}`;
+            vkProfile = `<a href="${vkLink}" target="_blank" rel="noopener noreferrer">${vkName}</a>`;
         } else {
-            vkName = '<span style="color: #999;">Не загружено</span>';
+            vkProfile = '<span style="color: #999;">—</span>';
         }
 
         let statusHTML = '';
         if (vote.is_cancelled) {
             statusHTML = `
-                <span class="cancelled-badge">АННУЛИРОВАН</span>
-                <span class="cancelled-reason">${vote.cancellation_reason}</span>
+                <span class="cancelled-badge">Аннулирован</span>
+                ${vote.cancellation_reason ? `<br><small style="color: #666;">${vote.cancellation_reason}</small>` : ''}
             `;
         } else {
-            statusHTML = '<span style="color: green;">✓ Действителен</span>';
+            statusHTML = '<span class="counted-badge">Учтён</span>';
         }
 
         let actionsHTML = '';
         if (!vote.is_cancelled) {
             actionsHTML = `
-                <button class="btn btn-danger btn-small" onclick="showCancelVoteModal(${vote.id}, '${vote.full_name}', '${vote.shift_name}', '${date}')">
-                    Аннулировать
+                <button class="btn btn-danger btn-small" onclick="showCancelVoteModal('${vote.vk_id}', '${escapeHtml(vote.full_name)}', ${vote.votes_count}, '${date}')">
+                    Аннулировать все
                 </button>
             `;
         } else {
@@ -377,15 +376,20 @@ function renderAuditLog(votes) {
             <td>${vote.id}</td>
             <td>${date}</td>
             <td>${vote.full_name}</td>
-            <td>${vkName}</td>
-            <td><a href="${vkLink}" target="_blank">${vote.vk_id}</a></td>
-            <td>${vote.shift_name}</td>
+            <td>${vkProfile}</td>
             <td>${statusHTML}</td>
             <td>${actionsHTML}</td>
         `;
 
         tbody.appendChild(row);
     });
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 // Load results (итоговая ведомость - анонимная таблица)
@@ -485,6 +489,15 @@ function renderResults(votes, shifts) {
 // Export votes
 async function exportVotes() {
     try {
+        // Проверяем статус голосования
+        const statusResponse = await fetch('/api/status');
+        const statusData = await statusResponse.json();
+
+        if (statusData.status !== 'finished') {
+            showAlert('⚠️ Экспорт итоговой ведомости доступен только после завершения выборов!', 'error');
+            return;
+        }
+
         const response = await fetch('/api/admin/export/votes', {
             method: 'GET',
             headers: {
@@ -503,7 +516,7 @@ async function exportVotes() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'votes.xls';
+        a.download = 'results.xlsx';
         document.body.appendChild(a);
         a.click();
 
@@ -532,20 +545,21 @@ function closeModal(modalId) {
 }
 
 // Show cancel vote modal
-function showCancelVoteModal(voteId, fullName, shiftName, date) {
+function showCancelVoteModal(vkId, fullName, votesCount, date) {
     const modal = document.getElementById('cancel-vote-modal');
     const infoDiv = document.getElementById('cancel-vote-info');
     const voteIdInput = document.getElementById('cancel-vote-id');
     const reasonTextarea = document.getElementById('cancel-reason');
 
-    voteIdInput.value = voteId;
+    voteIdInput.value = vkId; // Теперь храним VK ID
     reasonTextarea.value = '';
 
     infoDiv.innerHTML = `
-        <p><strong>ID голоса:</strong> ${voteId}</p>
+        <p><strong>VK ID:</strong> ${vkId}</p>
         <p><strong>ФИО:</strong> ${fullName}</p>
-        <p><strong>Смена:</strong> ${shiftName}</p>
+        <p><strong>Количество голосов:</strong> ${votesCount}</p>
         <p><strong>Дата:</strong> ${date}</p>
+        <p style="color: #e74c3c; margin-top: 10px;"><strong>⚠️ Будут аннулированы ВСЕ голоса этого пользователя!</strong></p>
     `;
 
     modal.classList.add('active');
@@ -725,7 +739,7 @@ document.getElementById('voters-form').addEventListener('submit', async (e) => {
 document.getElementById('cancel-vote-form').addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    const voteId = document.getElementById('cancel-vote-id').value;
+    const vkId = document.getElementById('cancel-vote-id').value; // Теперь это VK ID
     const reason = document.getElementById('cancel-reason').value.trim();
 
     if (!reason) {
@@ -733,16 +747,16 @@ document.getElementById('cancel-vote-form').addEventListener('submit', async (e)
         return;
     }
 
-    if (!confirm('Вы уверены, что хотите аннулировать этот голос? Это действие нельзя отменить.')) {
+    if (!confirm('⚠️ Вы уверены, что хотите аннулировать ВСЕ голоса этого пользователя? Это действие нельзя отменить.')) {
         return;
     }
 
     try {
-        const response = await apiCall(`/votes/${voteId}/cancel`, 'POST', { reason });
+        const response = await apiCall(`/votes/user/${vkId}/cancel`, 'POST', { reason });
         const result = await response.json();
 
         if (response.ok) {
-            showAlert('Голос аннулирован. Уведомление отправлено пользователю.', 'success');
+            showAlert(`Все голоса аннулированы (${result.cancelledCount}). Уведомление отправлено пользователю.`, 'success');
             closeModal('cancel-vote-modal');
             await loadAuditLog();
             // Также обновляем результаты, если они открыты

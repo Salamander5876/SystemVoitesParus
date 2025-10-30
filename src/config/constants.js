@@ -17,7 +17,9 @@ module.exports = {
         AWAITING_NAME: 'awaiting_name',
         AWAITING_SHIFT: 'awaiting_shift',
         AWAITING_CANDIDATE: 'awaiting_candidate',
-        AWAITING_CONFIRMATION: 'awaiting_confirmation'
+        AWAITING_CONFIRMATION: 'awaiting_confirmation',
+        AWAITING_SHIFT_CONFIRMATION: 'awaiting_shift_confirmation',
+        AWAITING_FINAL_CONFIRMATION: 'awaiting_final_confirmation'
     },
 
     MESSAGES: {

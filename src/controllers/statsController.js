@@ -108,15 +108,10 @@ class StatsController {
     static async getPublicVotesLog(req, res, next) {
         try {
             const Vote = require('../models/Vote');
-            const Shift = require('../models/Shift');
             const axios = require('axios');
 
             // Получаем все голоса
             const allVotes = Vote.getAllWithFullInfo();
-
-            // Получаем все смены
-            const allShifts = Shift.getAll();
-            const shiftNames = allShifts.map(s => s.name);
 
             // Получаем уникальные VK ID
             const vkIds = [...new Set(allVotes.map(v => v.vk_id))];
@@ -149,38 +144,58 @@ class StatsController {
                 }
             }
 
-            // Группируем голоса по пользователям
-            const userVotesMap = {};
+            // Группируем голоса по VK ID
+            const groupedVotes = {};
 
             allVotes.forEach(vote => {
-                // Пропускаем аннулированные голоса
-                if (vote.is_cancelled) return;
-
-                const key = `${vote.vk_id}_${vote.full_name}`;
-
-                if (!userVotesMap[key]) {
-                    userVotesMap[key] = {
-                        id: vote.id, // Используем ID первого голоса для сортировки
+                if (!groupedVotes[vote.vk_id]) {
+                    groupedVotes[vote.vk_id] = {
                         vk_id: vote.vk_id,
                         full_name: vote.full_name,
                         vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
                         vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null,
-                        created_at: vote.created_at,
-                        shifts: {}
+                        created_at: vote.created_at, // Дата первого голоса
+                        votes_count: 0,
+                        all_cancelled: true
                     };
                 }
 
-                // Добавляем информацию о смене
-                userVotesMap[key].shifts[vote.shift_name] = true;
+                groupedVotes[vote.vk_id].votes_count++;
+
+                // Если есть хотя бы один НЕ аннулированный голос - значит не все аннулированы
+                if (!vote.is_cancelled) {
+                    groupedVotes[vote.vk_id].all_cancelled = false;
+                }
+
+                // Берем самую раннюю дату голосования
+                if (new Date(vote.created_at) < new Date(groupedVotes[vote.vk_id].created_at)) {
+                    groupedVotes[vote.vk_id].created_at = vote.created_at;
+                }
             });
 
-            // Преобразуем в массив
-            const usersVotes = Object.values(userVotesMap);
+            // Преобразуем в массив и добавляем ID (порядковый номер)
+            const votesArray = Object.values(groupedVotes).map((vote, index) => ({
+                id: index + 1,
+                vk_id: vote.vk_id,
+                full_name: vote.full_name,
+                vk_first_name: vote.vk_first_name,
+                vk_last_name: vote.vk_last_name,
+                created_at: vote.created_at,
+                votes_count: vote.votes_count,
+                is_cancelled: vote.all_cancelled ? 1 : 0 // Если ВСЕ голоса аннулированы
+            }));
+
+            // Сортируем по дате (новые сначала)
+            votesArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // Переназначаем ID после сортировки
+            votesArray.forEach((vote, index) => {
+                vote.id = index + 1;
+            });
 
             res.json({
                 success: true,
-                votes: usersVotes,
-                shifts: shiftNames
+                votes: votesArray
             });
 
         } catch (error) {

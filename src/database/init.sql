@@ -47,8 +47,7 @@ CREATE TABLE IF NOT EXISTS votes (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (shift_id) REFERENCES shifts(id) ON DELETE CASCADE,
     FOREIGN KEY (candidate_id) REFERENCES candidates(id) ON DELETE SET NULL,
-    FOREIGN KEY (cancelled_by) REFERENCES admins(id),
-    UNIQUE(user_id, shift_id)
+    FOREIGN KEY (cancelled_by) REFERENCES admins(id)
 );
 
 -- Таблица администраторов
@@ -99,3 +98,9 @@ CREATE INDEX IF NOT EXISTS idx_votes_is_cancelled ON votes(is_cancelled);
 CREATE INDEX IF NOT EXISTS idx_candidates_shift_id ON candidates(shift_id);
 CREATE INDEX IF NOT EXISTS idx_shifts_is_active ON shifts(is_active);
 CREATE INDEX IF NOT EXISTS idx_eligible_voters_normalized ON eligible_voters(full_name_normalized);
+
+-- Partial unique index для голосов: уникальность только для неаннулированных голосов
+-- Это позволяет пользователям голосовать повторно после аннулирования их голосов
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_votes
+ON votes(user_id, shift_id)
+WHERE is_cancelled = 0;

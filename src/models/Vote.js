@@ -173,22 +173,22 @@ class Vote {
     }
 
     static getTotalCount() {
-        const stmt = db.prepare('SELECT COUNT(*) as total FROM votes');
+        const stmt = db.prepare('SELECT COUNT(*) as total FROM votes WHERE is_cancelled = 0');
         return stmt.get().total;
     }
 
     static getCountByShift(shiftId) {
-        const stmt = db.prepare('SELECT COUNT(*) as total FROM votes WHERE shift_id = ?');
+        const stmt = db.prepare('SELECT COUNT(*) as total FROM votes WHERE shift_id = ? AND is_cancelled = 0');
         return stmt.get(shiftId).total;
     }
 
     static getUniqueVotersCount() {
-        const stmt = db.prepare('SELECT COUNT(DISTINCT user_id) as total FROM votes');
+        const stmt = db.prepare('SELECT COUNT(DISTINCT user_id) as total FROM votes WHERE is_cancelled = 0');
         return stmt.get().total;
     }
 
     static getUniqueVotersByShift(shiftId) {
-        const stmt = db.prepare('SELECT COUNT(DISTINCT user_id) as total FROM votes WHERE shift_id = ?');
+        const stmt = db.prepare('SELECT COUNT(DISTINCT user_id) as total FROM votes WHERE shift_id = ? AND is_cancelled = 0');
         return stmt.get(shiftId).total;
     }
 
@@ -212,7 +212,7 @@ class Vote {
                 vote_type,
                 COUNT(*) as count
             FROM votes
-            WHERE shift_id = ? AND vote_type IN ('against_all', 'abstain')
+            WHERE shift_id = ? AND vote_type IN ('against_all', 'abstain') AND is_cancelled = 0
             GROUP BY vote_type
         `);
         const results = stmt.all(shiftId);
@@ -237,19 +237,55 @@ class Vote {
 
     // Проверить, голосовал ли человек с таким ФИО за конкретную смену (только НЕ аннулированные голоса)
     static hasVotedByFullNameAndShift(fullName, shiftId) {
-        const normalizedFullName = fullName.trim().toLowerCase().replace(/\s+/g, ' ');
+        const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
 
         const stmt = db.prepare(`
             SELECT COUNT(*) as count
             FROM votes v
             JOIN users u ON v.user_id = u.id
-            WHERE LOWER(TRIM(REPLACE(u.full_name, '  ', ' '))) = ?
+            WHERE TRIM(REPLACE(u.full_name, '  ', ' ')) = ? COLLATE NOCASE
             AND v.shift_id = ?
             AND v.is_cancelled = 0
         `);
 
         const result = stmt.get(normalizedFullName, shiftId);
         return result.count > 0;
+    }
+
+    // Проверить, голосовал ли человек с таким ФИО хотя бы по одной смене (только НЕ аннулированные голоса)
+    // Возвращает объект с информацией о VK ID, который использовал это ФИО
+    static hasVotedByFullName(fullName) {
+        const normalizedFullName = fullName.trim().replace(/\s+/g, ' ');
+
+        const stmt = db.prepare(`
+            SELECT u.vk_id, u.full_name, COUNT(DISTINCT v.shift_id) as shifts_count
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            WHERE TRIM(REPLACE(u.full_name, '  ', ' ')) = ? COLLATE NOCASE
+            AND v.is_cancelled = 0
+            GROUP BY u.vk_id, u.full_name
+            LIMIT 1
+        `);
+
+        const result = stmt.get(normalizedFullName);
+        return result || null;
+    }
+
+    // Проверить, голосовал ли уже этот VK ID (только НЕ аннулированные голоса)
+    // Возвращает объект с информацией о ФИО, которое использовал этот VK ID
+    static hasVotedByVkId(vkId) {
+        const stmt = db.prepare(`
+            SELECT u.vk_id, u.full_name, COUNT(DISTINCT v.shift_id) as shifts_count
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            WHERE u.vk_id = ?
+            AND v.is_cancelled = 0
+            GROUP BY u.vk_id, u.full_name
+            LIMIT 1
+        `);
+
+        const result = stmt.get(vkId.toString());
+        return result || null;
     }
 
     // Получить голоса, сгруппированные по псевдониму (без персональных данных)

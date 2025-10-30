@@ -3,22 +3,6 @@ require('dotenv').config();
 // Установка часового пояса Asia/Chita
 process.env.TZ = 'Asia/Chita';
 
-// ---------- МАССИВЫ ДЛЯ ГЕНЕРАЦИИ ПСЕВДОНИМОВ ----------
-const adjectives = [
-    "Сияющий", "Лунный", "Звёздный", "Туманный", "Искрящийся",
-    "Серебристый", "Эфирный", "Солнечный", "Таинственный", "Мерцающий",
-    "Кристальный", "Волшебный", "Небесный", "Добрый", "Закатный"
-];
-
-const nouns = [
-    "Дух", "Эльф", "Феникс", "Единорог", "Грифон", "Дракон",
-    "Ангел", "Гном", "Сильф", "Леший", "Водяной", "Домовой",
-    "Светлячок", "Хранитель", "Странник", "Чародей", "Звёздочет",
-    "Лунатик", "Волшебник", "Кот", "Мудрец", "Герой", "Филин",
-    "Фавн", "Рыцарь", "Бард", "Морж", "Страж", "Вестник", "Мечтатель"
-];
-// ---------------------------------------------------------
-
 const { VK, Keyboard } = require('vk-io');
 const { QuestionManager } = require('vk-io-question');
 const axios = require('axios');
@@ -41,53 +25,64 @@ const API_HEADERS = { 'x-bot-secret': process.env.VK_SECRET };
 
 function getUserState(userId) {
     if (!userStates.has(userId)) {
-        userStates.set(userId, { state: USER_STATES.IDLE, data: {} });
+        userStates.set(userId, {
+            state: USER_STATES.IDLE,
+            data: {
+                messagesToDelete: [] // Массив ID сообщений для удаления
+            }
+        });
     }
     return userStates.get(userId);
 }
 
 function updateUserState(userId, state, data = {}) {
     const current = getUserState(userId);
-    userStates.set(userId, { state, data: { ...current.data, ...data } });
+    userStates.set(userId, {
+        state,
+        data: { ...current.data, ...data }
+    });
 }
 
 function resetUserState(userId) {
-    userStates.set(userId, { state: USER_STATES.IDLE, data: {} });
+    userStates.set(userId, {
+        state: USER_STATES.IDLE,
+        data: { messagesToDelete: [] }
+    });
+}
+
+// Функция для удаления сообщений пользователя (для анонимности)
+async function deleteUserMessage(userId, conversationMessageId) {
+    try {
+        await vk.api.messages.delete({
+            peer_id: userId,
+            conversation_message_ids: [conversationMessageId],
+            delete_for_all: 1
+        });
+        logger.info(`Deleted message ${conversationMessageId} for user ${userId}`);
+    } catch (error) {
+        logger.error('Error deleting message:', error);
+    }
 }
 
 // ---------------------------------------------------------
-// Генерация уникального псевдонима
+// Генерация уникального псевдонима (запрос к серверу)
 // ---------------------------------------------------------
 async function generateUniqueNickname() {
-    const used = new Set();
-
-    // Получаем уже занятые псевдонимы
     try {
-        const { data } = await axios.get(`${API_URL}/users/nicknames`);
-        data.nicknames.forEach(n => used.add(n));
-    } catch (err) {
-        logger.warn('Не удалось получить список псевдонимов, продолжаем без проверки');
-    }
+        const { data } = await axios.post(`${API_URL}/generate-nickname`, {}, {
+            headers: API_HEADERS
+        });
 
-    let nickname;
-    let attempts = 0;
-    const maxAttempts = 200;   // 15×30 = 450 базовых комбинаций
-
-    do {
-        const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
-        const noun = nouns[Math.floor(Math.random() * nouns.length)];
-        nickname = `${adj} ${noun}`;
-
-        attempts++;
-        if (attempts > maxAttempts) {
-            // Если закончились комбинации – добавляем случайное число
-            const num = Math.floor(Math.random() * 900) + 100;
-            nickname = `${adj} ${noun} ${num}`;
-            break;
+        if (data.success && data.nickname) {
+            logger.info(`Received unique nickname from server: ${data.nickname}`);
+            return data.nickname;
         }
-    } while (used.has(nickname));
 
-    return nickname;
+        throw new Error('Invalid response from server');
+    } catch (err) {
+        logger.error('Не удалось получить псевдоним с сервера:', err.message);
+        throw new Error('Не удалось сгенерировать псевдоним. Попробуйте позже.');
+    }
 }
 // ---------------------------------------------------------
 
@@ -122,6 +117,19 @@ async function getCandidates(shiftId) {
     }
 }
 
+async function checkVoterEligibility(fullName, vkId) {
+    try {
+        const { data } = await axios.post(`${API_URL}/check-voter`, {
+            fullName,
+            vkId
+        }, { headers: API_HEADERS });
+        return data;
+    } catch (error) {
+        logger.error('Error checking voter eligibility:', error);
+        return { success: false, error: 'Ошибка сервера' };
+    }
+}
+
 async function submitVote(vkId, fullName, nickname, shiftId, candidateId, voteType) {
     try {
         const { data } = await axios.post(`${API_URL}/vote`, {
@@ -149,6 +157,7 @@ vk.updates.on('message_new', async (context) => {
     const userId = context.senderId;
     const text = context.text || '';
     const state = getUserState(userId);
+    const conversationMessageId = context.conversationMessageId;
 
     try {
         // ----------------- Команды -----------------
@@ -234,117 +243,127 @@ vk.updates.on('message_new', async (context) => {
             });
         }
 
-        // ----------------- Продолжить после голоса -----------------
-        if (text === BUTTONS.CONTINUE) {
-            if (state.data.fullName && state.data.nickname) {
-                updateUserState(userId, USER_STATES.AWAITING_SHIFT);
-                const shifts = await getShifts();
-                const kb = Keyboard.builder();
-                shifts.forEach(s => kb.textButton({ label: s.name }).row());
-                kb.textButton({ label: BUTTONS.FINISH, color: Keyboard.NEGATIVE_COLOR });
-                return context.send('Выберите смену:', { keyboard: kb });
-            }
-        }
-
-        // ----------------- Завершить -----------------
-        if (text === BUTTONS.FINISH) {
-            resetUserState(userId);
-            return context.send('Спасибо!', {
-                keyboard: Keyboard.builder()
-                    .textButton({ label: BUTTONS.START_VOTING })
-            });
-        }
-
         // ----------------- Обработка состояний -----------------
         switch (state.state) {
 
             // ----- ВВОД ФИО -----
             case USER_STATES.AWAITING_NAME:
+                // Удаляем сообщение с ФИО для анонимности
+                await deleteUserMessage(userId, conversationMessageId);
+
                 if (text.length < 5 || !/^[а-яА-ЯёЁ\s]+$/.test(text)) {
                     return context.send(MESSAGES.ERROR_INVALID_NAME);
                 }
 
+                // Проверяем ФИО сразу (включая проверку на повторное голосование)
+                const eligibilityCheck = await checkVoterEligibility(text, userId);
+
+                if (!eligibilityCheck.success) {
+                    return context.send('Ошибка при проверке ФИО. Попробуйте ещё раз.');
+                }
+
+                if (!eligibilityCheck.eligible) {
+                    resetUserState(userId);
+                    return context.send(eligibilityCheck.error || 'Ваше ФИО отсутствует в списке избирателей.', {
+                        keyboard: Keyboard.builder()
+                            .textButton({ label: BUTTONS.START_VOTING })
+                    });
+                }
+
                 // Генерируем уникальный псевдоним
-                const nickname = await generateUniqueNickname();
+                let nickname;
+                try {
+                    nickname = await generateUniqueNickname();
+                } catch (error) {
+                    resetUserState(userId);
+                    return context.send('Не удалось сгенерировать псевдоним. Попробуйте позже.', {
+                        keyboard: Keyboard.builder()
+                            .textButton({ label: BUTTONS.START_VOTING })
+                    });
+                }
 
-                updateUserState(userId, USER_STATES.AWAITING_SHIFT, {
-                    fullName: text,
-                    nickname
-                });
-
-                const shifts = await getShifts();
-                if (shifts.length === 0) {
+                // Получаем все смены
+                const allShifts = await getShifts();
+                if (allShifts.length === 0) {
                     resetUserState(userId);
                     return context.send('Нет активных смен для голосования');
                 }
 
-                const kb = Keyboard.builder();
-                shifts.forEach(s => kb.textButton({ label: s.name }).row());
-                kb.textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR });
+                // Инициализируем данные для последовательного голосования
+                updateUserState(userId, USER_STATES.AWAITING_CANDIDATE, {
+                    fullName: text,
+                    nickname,
+                    shifts: allShifts,
+                    currentShiftIndex: 0,
+                    votes: [] // Массив всех голосов для финального подтверждения
+                });
 
-                return context.send(
-                    `${MESSAGES.NICKNAME_ASSIGNED(nickname)}\n\n${MESSAGES.CHOOSE_SHIFT}`,
-                    { keyboard: kb }
-                );
+                // Начинаем с первой смены
+                const firstShift = allShifts[0];
+                const firstCandidates = await getCandidates(firstShift.id);
 
-            // ----- ВЫБОР СМЕНЫ -----
-            case USER_STATES.AWAITING_SHIFT:
-                const allShifts = await getShifts();
-                const shift = allShifts.find(s => s.name === text);
-                if (!shift) return context.send('Неверная смена');
-
-                const candidates = await getCandidates(shift.id);
-                if (candidates.length === 0) return context.send('Нет кандидатов');
+                if (firstCandidates.length === 0) {
+                    return context.send('Нет кандидатов для голосования');
+                }
 
                 const allOptions = [
-                    ...candidates,
+                    ...firstCandidates,
                     { id: null, name: 'Против всех', is_special: true },
                     { id: null, name: 'Воздержаться', is_special: true }
                 ];
 
-                updateUserState(userId, USER_STATES.AWAITING_CANDIDATE, {
-                    shiftId: shift.id,
-                    shiftName: shift.name
-                });
-
                 const kbCand = Keyboard.builder();
                 allOptions.forEach(c => kbCand.textButton({ label: c.name }).row());
-                kbCand.textButton({ label: BUTTONS.BACK, color: Keyboard.SECONDARY_COLOR });
-                return context.send(MESSAGES.CHOOSE_CANDIDATE, { keyboard: kbCand });
+                kbCand.textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR });
+
+                return context.send(
+                    `${MESSAGES.NICKNAME_ASSIGNED(nickname)}\n\n` +
+                    `Сейчас вы будете последовательно голосовать по каждой смене.\n\n` +
+                    `Смена 1 из ${allShifts.length}: ${firstShift.name}\n\n` +
+                    MESSAGES.CHOOSE_CANDIDATE,
+                    { keyboard: kbCand }
+                );
 
             // ----- ВЫБОР КАНДИДАТА -----
             case USER_STATES.AWAITING_CANDIDATE:
-                if (text === BUTTONS.BACK) {
-                    // Возврат к выбору смены (псевдоним уже есть)
-                    updateUserState(userId, USER_STATES.AWAITING_SHIFT);
-                    const shiftsBack = await getShifts();
-                    const kbBack = Keyboard.builder();
-                    shiftsBack.forEach(s => kbBack.textButton({ label: s.name }).row());
-                    kbBack.textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR });
-                    return context.send(MESSAGES.CHOOSE_SHIFT, { keyboard: kbBack });
-                }
+                // Удаляем сообщение с выбором кандидата
+                await deleteUserMessage(userId, conversationMessageId);
 
-                const cands = await getCandidates(state.data.shiftId);
-                const special = [{ id: null, name: 'Против всех' }, { id: null, name: 'Воздержаться' }];
+                const currentShift = state.data.shifts[state.data.currentShiftIndex];
+                const cands = await getCandidates(currentShift.id);
+                const special = [
+                    { id: null, name: 'Против всех' },
+                    { id: null, name: 'Воздержаться' }
+                ];
                 const allVoteOptions = [...cands, ...special];
 
                 const selected = allVoteOptions.find(c => c.name === text);
-                if (!selected) return context.send('Неверный вариант');
+                if (!selected) return context.send('Неверный вариант. Выберите из предложенных.');
 
                 let voteType = 'candidate';
                 let candidateId = selected.id;
 
-                if (text === 'Против всех') { voteType = 'against_all'; candidateId = null; }
-                else if (text === 'Воздержаться') { voteType = 'abstain'; candidateId = null; }
+                if (text === 'Против всех') {
+                    voteType = 'against_all';
+                    candidateId = null;
+                } else if (text === 'Воздержаться') {
+                    voteType = 'abstain';
+                    candidateId = null;
+                }
 
-                updateUserState(userId, USER_STATES.AWAITING_CONFIRMATION, {
-                    candidateId,
-                    candidateName: text,
-                    voteType
+                // Сохраняем выбор для подтверждения
+                updateUserState(userId, USER_STATES.AWAITING_SHIFT_CONFIRMATION, {
+                    pendingVote: {
+                        shiftId: currentShift.id,
+                        shiftName: currentShift.name,
+                        candidateId,
+                        candidateName: text,
+                        voteType
+                    }
                 });
 
                 const confirmMsg = `Подтвердите ваш выбор:\n\n` +
-                    `Смена: ${state.data.shiftName}\n` +
+                    `Смена: ${currentShift.name}\n` +
                     `Ваш голос: ${text}`;
 
                 return context.send(confirmMsg, {
@@ -353,49 +372,133 @@ vk.updates.on('message_new', async (context) => {
                         .textButton({ label: BUTTONS.CHANGE, color: Keyboard.SECONDARY_COLOR })
                 });
 
-            // ----- ПОДТВЕРЖДЕНИЕ -----
-            case USER_STATES.AWAITING_CONFIRMATION:
+            // ----- ПОДТВЕРЖДЕНИЕ ВЫБОРА ДЛЯ СМЕНЫ -----
+            case USER_STATES.AWAITING_SHIFT_CONFIRMATION:
+                // Удаляем сообщение с подтверждением
+                await deleteUserMessage(userId, conversationMessageId);
+
                 if (text === BUTTONS.CHANGE) {
+                    // Возврат к выбору кандидата
                     updateUserState(userId, USER_STATES.AWAITING_CANDIDATE);
-                    return;
+                    const currentShiftBack = state.data.shifts[state.data.currentShiftIndex];
+                    const candsBack = await getCandidates(currentShiftBack.id);
+                    const optionsBack = [
+                        ...candsBack,
+                        { id: null, name: 'Против всех' },
+                        { id: null, name: 'Воздержаться' }
+                    ];
+                    const kbBack = Keyboard.builder();
+                    optionsBack.forEach(c => kbBack.textButton({ label: c.name }).row());
+                    return context.send(`Выберите кандидата для смены "${currentShiftBack.name}":`, {
+                        keyboard: kbBack
+                    });
                 }
-                if (text !== BUTTONS.CONFIRM) return context.send('Нажмите «Подтвердить»');
 
-                const voteData = state.data;
-                const result = await submitVote(
-                    userId,
-                    voteData.fullName,
-                    voteData.nickname,
-                    voteData.shiftId,
-                    voteData.candidateId,
-                    voteData.voteType
-                );
+                if (text !== BUTTONS.CONFIRM) {
+                    return context.send('Нажмите «Подтвердить» или «Изменить»');
+                }
 
-                if (result.success) {
-                    // Сохраняем ФИО + псевдоним для дальнейшего голосования
-                    updateUserState(userId, USER_STATES.AWAITING_SHIFT, {
-                        fullName: voteData.fullName,
-                        nickname: voteData.nickname
+                // Сохраняем голос
+                state.data.votes.push(state.data.pendingVote);
+
+                // Проверяем, есть ли ещё смены
+                const nextIndex = state.data.currentShiftIndex + 1;
+
+                if (nextIndex < state.data.shifts.length) {
+                    // Переходим к следующей смене
+                    updateUserState(userId, USER_STATES.AWAITING_CANDIDATE, {
+                        currentShiftIndex: nextIndex,
+                        pendingVote: null
                     });
 
+                    const nextShift = state.data.shifts[nextIndex];
+                    const nextCandidates = await getCandidates(nextShift.id);
+
+                    const nextOptions = [
+                        ...nextCandidates,
+                        { id: null, name: 'Против всех' },
+                        { id: null, name: 'Воздержаться' }
+                    ];
+
+                    const kbNext = Keyboard.builder();
+                    nextOptions.forEach(c => kbNext.textButton({ label: c.name }).row());
+                    kbNext.textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR });
+
                     return context.send(
-                        MESSAGES.VOTE_SUCCESS(voteData.nickname, voteData.shiftName, voteData.candidateName),
+                        `Смена ${nextIndex + 1} из ${state.data.shifts.length}: ${nextShift.name}\n\n` +
+                        MESSAGES.CHOOSE_CANDIDATE,
+                        { keyboard: kbNext }
+                    );
+                } else {
+                    // Все смены пройдены - показываем финальное подтверждение
+                    updateUserState(userId, USER_STATES.AWAITING_FINAL_CONFIRMATION);
+
+                    let summaryMsg = '📋 Итоговый список ваших голосов:\n\n';
+                    state.data.votes.forEach((vote, idx) => {
+                        summaryMsg += `${idx + 1}. ${vote.shiftName}: ${vote.candidateName}\n`;
+                    });
+                    summaryMsg += `\nВы проголосовали по всем сменам. Подтвердите отправку всех голосов.`;
+
+                    return context.send(summaryMsg, {
+                        keyboard: Keyboard.builder()
+                            .textButton({ label: '✅ Подтвердить все голоса', color: Keyboard.POSITIVE_COLOR })
+                            .row()
+                            .textButton({ label: BUTTONS.CANCEL, color: Keyboard.NEGATIVE_COLOR })
+                    });
+                }
+
+            // ----- ФИНАЛЬНОЕ ПОДТВЕРЖДЕНИЕ ВСЕХ ГОЛОСОВ -----
+            case USER_STATES.AWAITING_FINAL_CONFIRMATION:
+                // Удаляем сообщение с финальным подтверждением
+                await deleteUserMessage(userId, conversationMessageId);
+
+                if (text !== '✅ Подтвердить все голоса') {
+                    return context.send('Нажмите «✅ Подтвердить все голоса» для завершения голосования.');
+                }
+
+                // Отправляем все голоса на сервер
+                const results = [];
+                for (const vote of state.data.votes) {
+                    const result = await submitVote(
+                        userId,
+                        state.data.fullName,
+                        state.data.nickname,
+                        vote.shiftId,
+                        vote.candidateId,
+                        vote.voteType
+                    );
+                    results.push({ ...vote, success: result.success, error: result.error });
+                }
+
+                // Проверяем результаты
+                const failed = results.filter(r => !r.success);
+
+                if (failed.length === 0) {
+                    // Все голоса успешно отправлены
+                    resetUserState(userId);
+                    return context.send(
+                        `✅ Спасибо! Все ваши голоса успешно учтены.\n\n` +
+                        `Ваш псевдоним: ${state.data.nickname}\n\n` +
+                        `Вы проголосовали по ${results.length} сменам.`,
                         {
                             keyboard: Keyboard.builder()
-                                .textButton({ label: BUTTONS.CONTINUE, color: Keyboard.POSITIVE_COLOR })
-                                .textButton({ label: BUTTONS.FINISH, color: Keyboard.SECONDARY_COLOR })
+                                .textButton({ label: '/mystats', color: Keyboard.PRIMARY_COLOR })
                         }
                     );
                 } else {
-                    await context.send(`Ошибка: ${result.error}`);
-                    if (result.error.includes('голосовали')) {
-                        updateUserState(userId, USER_STATES.AWAITING_SHIFT, {
-                            fullName: voteData.fullName,
-                            nickname: voteData.nickname
-                        });
-                    }
+                    // Были ошибки
+                    let errorMsg = '⚠️ Некоторые голоса не были учтены:\n\n';
+                    failed.forEach(f => {
+                        errorMsg += `• ${f.shiftName}: ${f.error}\n`;
+                    });
+                    errorMsg += '\nПопробуйте проголосовать заново или обратитесь к администратору.';
+
+                    resetUserState(userId);
+                    return context.send(errorMsg, {
+                        keyboard: Keyboard.builder()
+                            .textButton({ label: BUTTONS.START_VOTING })
+                    });
                 }
-                break;
         }
 
     } catch (error) {
@@ -433,6 +536,31 @@ botApp.post('/api/notify-vote-cancelled', async (req, res) => {
         res.json({ success: true });
     } catch (error) {
         logger.error('Error sending cancellation notification:', error);
+        res.status(500).json({ error: 'Failed to send notification' });
+    }
+});
+
+// Новый endpoint для уведомления об аннулировании ВСЕХ голосов
+botApp.post('/api/notify-all-votes-cancelled', async (req, res) => {
+    try {
+        const { vkId, reason, votesCount } = req.body;
+        if (!vkId || !reason) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        await vk.api.messages.send({
+            user_id: vkId,
+            message: `⚠️ Уведомление об аннулировании голосов\n\n` +
+                `Все ваши голоса (${votesCount || 'все'}) были аннулированы администратором.\n\n` +
+                `Причина: ${reason}\n\n` +
+                `Теперь вы можете проголосовать заново. Используйте /start.`,
+            random_id: Math.floor(Math.random() * 1000000)
+        });
+
+        logger.info(`All votes cancellation notification sent to ${vkId} (count: ${votesCount})`);
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('Error sending all votes cancellation notification:', error);
         res.status(500).json({ error: 'Failed to send notification' });
     }
 });

@@ -277,12 +277,12 @@ class AdminController {
             const groupedVotes = Vote.getGroupedByNickname();
             const shiftNames = Vote.getAllShiftNames();
 
-            // Создаём данные для таблицы
-            const data = [];
+            // ===== ЛИСТ 1: ГОЛОСА =====
+            const votesData = [];
 
             // Заголовок
-            const header = ['Псевдоним', ...shiftNames];
-            data.push(header);
+            const votesHeader = ['Псевдоним', ...shiftNames];
+            votesData.push(votesHeader);
 
             // Данные
             groupedVotes.forEach(voter => {
@@ -302,33 +302,109 @@ class AdminController {
                     }
                 });
 
-                data.push(row);
+                votesData.push(row);
             });
 
-            // Создаём workbook и worksheet
+            // Создаём workbook
             const workbook = XLSX.utils.book_new();
-            const worksheet = XLSX.utils.aoa_to_sheet(data);
 
-            // Устанавливаем ширину колонок
-            const colWidths = [{ wch: 20 }]; // Псевдоним
-            shiftNames.forEach(() => colWidths.push({ wch: 25 })); // Смены
-            worksheet['!cols'] = colWidths;
+            // Лист 1: Голоса
+            const votesWorksheet = XLSX.utils.aoa_to_sheet(votesData);
+            const votesColWidths = [{ wch: 20 }]; // Псевдоним
+            shiftNames.forEach(() => votesColWidths.push({ wch: 25 })); // Смены
+            votesWorksheet['!cols'] = votesColWidths;
+            XLSX.utils.book_append_sheet(workbook, votesWorksheet, 'Голоса');
 
-            // Добавляем worksheet в workbook
-            XLSX.utils.book_append_sheet(workbook, worksheet, 'Голоса');
+            // ===== ЛИСТ 2: ИТОГИ =====
+            const resultsData = [];
+            const allShifts = Shift.getAll();
+
+            allShifts.forEach((shift, shiftIndex) => {
+                // Заголовок смены
+                if (shiftIndex > 0) {
+                    resultsData.push(['']); // Пустая строка между сменами
+                }
+                resultsData.push([`СМЕНА: ${shift.name}`]);
+                resultsData.push(['']);
+
+                // Получаем статистику
+                const shiftStats = Shift.getWithStats(shift.id);
+                const candidates = Candidate.getStatsForShift(shift.id);
+
+                // Сортируем по количеству голосов
+                const sortedCandidates = candidates.sort((a, b) => b.vote_count - a.vote_count);
+
+                // Определяем победителя
+                const winner = sortedCandidates.length > 0 ? sortedCandidates[0] : null;
+
+                // Статистика смены
+                resultsData.push(['Всего голосов:', shiftStats.stats.total_votes]);
+                resultsData.push(['Проголосовало:', shiftStats.stats.unique_voters]);
+                resultsData.push(['']);
+
+                // Победитель
+                if (winner) {
+                    resultsData.push(['🏆 ПОБЕДИТЕЛЬ:', winner.name]);
+                    resultsData.push(['Голосов:', winner.vote_count]);
+                    const percentage = shiftStats.stats.total_votes > 0
+                        ? ((winner.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
+                        : 0;
+                    resultsData.push(['Процент:', `${percentage}%`]);
+                } else {
+                    resultsData.push(['Победитель:', 'Не определен']);
+                }
+                resultsData.push(['']);
+
+                // Все кандидаты
+                resultsData.push(['РЕЙТИНГ КАНДИДАТОВ:']);
+                resultsData.push(['Место', 'Кандидат', 'Голосов', 'Процент']);
+
+                sortedCandidates.forEach((candidate, index) => {
+                    const place = index + 1;
+                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                    const percentage = shiftStats.stats.total_votes > 0
+                        ? ((candidate.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
+                        : 0;
+                    resultsData.push([
+                        `${place} ${medal}`,
+                        candidate.name,
+                        candidate.vote_count,
+                        `${percentage}%`
+                    ]);
+                });
+
+                // Специальные голоса
+                const againstAll = Vote.getAgainstAllCount(shift.id);
+                const abstain = Vote.getAbstainCount(shift.id);
+
+                resultsData.push(['']);
+                resultsData.push(['СПЕЦИАЛЬНЫЕ ГОЛОСА:']);
+                resultsData.push(['Против всех:', againstAll]);
+                resultsData.push(['Воздержался:', abstain]);
+            });
+
+            // Создаем лист Итоги
+            const resultsWorksheet = XLSX.utils.aoa_to_sheet(resultsData);
+            resultsWorksheet['!cols'] = [
+                { wch: 25 },
+                { wch: 30 },
+                { wch: 15 },
+                { wch: 15 }
+            ];
+            XLSX.utils.book_append_sheet(workbook, resultsWorksheet, 'Итоги');
 
             // Генерируем файл
             const buffer = XLSX.write(workbook, {
                 type: 'buffer',
-                bookType: 'xls',
+                bookType: 'xlsx',
                 bookSST: false
             });
 
             Admin.logAction(req.admin.id, 'EXPORT_VOTES', `Count: ${groupedVotes.length}`, req.ip);
 
             // Отправляем файл
-            res.setHeader('Content-Type', 'application/vnd.ms-excel');
-            res.setHeader('Content-Disposition', 'attachment; filename=votes.xls');
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=results.xlsx');
             res.send(buffer);
 
         } catch (error) {
@@ -548,16 +624,63 @@ class AdminController {
                 }
             }
 
-            // Добавляем информацию из VK к голосам
-            const votesWithVkInfo = votes.map(vote => ({
-                ...vote,
-                vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
-                vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null
+            // Группируем голоса по VK ID
+            const groupedVotes = {};
+
+            votes.forEach(vote => {
+                if (!groupedVotes[vote.vk_id]) {
+                    groupedVotes[vote.vk_id] = {
+                        vk_id: vote.vk_id,
+                        full_name: vote.full_name,
+                        vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
+                        vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null,
+                        created_at: vote.created_at,
+                        votes_count: 0,
+                        all_cancelled: true,
+                        cancellation_reason: null // Для админки
+                    };
+                }
+
+                groupedVotes[vote.vk_id].votes_count++;
+
+                // Если есть хотя бы один НЕ аннулированный голос - значит не все аннулированы
+                if (!vote.is_cancelled) {
+                    groupedVotes[vote.vk_id].all_cancelled = false;
+                } else if (vote.cancellation_reason) {
+                    // Сохраняем причину аннулирования (берем последнюю)
+                    groupedVotes[vote.vk_id].cancellation_reason = vote.cancellation_reason;
+                }
+
+                // Берем самую раннюю дату голосования
+                if (new Date(vote.created_at) < new Date(groupedVotes[vote.vk_id].created_at)) {
+                    groupedVotes[vote.vk_id].created_at = vote.created_at;
+                }
+            });
+
+            // Преобразуем в массив
+            const votesArray = Object.values(groupedVotes).map((vote, index) => ({
+                id: index + 1,
+                vk_id: vote.vk_id,
+                full_name: vote.full_name,
+                vk_first_name: vote.vk_first_name,
+                vk_last_name: vote.vk_last_name,
+                created_at: vote.created_at,
+                votes_count: vote.votes_count,
+                is_cancelled: vote.all_cancelled ? 1 : 0,
+                cancellation_reason: vote.cancellation_reason
             }));
+
+            // Сортируем по дате (новые сначала)
+            votesArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            // Переназначаем ID после сортировки
+            votesArray.forEach((vote, index) => {
+                vote.id = index + 1;
+            });
 
             res.json({
                 success: true,
-                votes: votesWithVkInfo
+                votes: votesArray
             });
 
         } catch (error) {
@@ -565,73 +688,94 @@ class AdminController {
         }
     }
 
-    // Аннулировать голос
+    // Аннулировать ВСЕ голоса пользователя по VK ID
     static async cancelVote(req, res, next) {
         try {
-            const { voteId } = req.params;
+            const { vkId } = req.params;
             const { reason } = req.body;
 
             if (!reason || reason.trim().length === 0) {
                 return res.status(400).json({ error: 'Необходимо указать причину аннулирования' });
             }
 
-            // Получаем информацию о голосе
-            const vote = Vote.getVoteWithUserInfo(parseInt(voteId));
+            // Получаем ВСЕ голоса этого пользователя
+            const db = require('../config/database');
+            const userVotes = db.prepare(`
+                SELECT v.id, v.vote_type, v.candidate_id, v.is_cancelled, v.shift_id,
+                       u.vk_id, u.full_name,
+                       s.name as shift_name
+                FROM votes v
+                JOIN users u ON v.user_id = u.id
+                JOIN shifts s ON v.shift_id = s.id
+                WHERE u.vk_id = ?
+            `).all(vkId.toString());
 
-            if (!vote) {
-                return res.status(404).json({ error: 'Голос не найден' });
+            if (userVotes.length === 0) {
+                return res.status(404).json({ error: 'Голоса пользователя не найдены' });
             }
 
-            if (vote.is_cancelled) {
-                return res.status(400).json({ error: 'Голос уже аннулирован' });
+            // Проверяем, есть ли неаннулированные голоса
+            const activeVotes = userVotes.filter(v => !v.is_cancelled);
+            if (activeVotes.length === 0) {
+                return res.status(400).json({ error: 'Все голоса пользователя уже аннулированы' });
             }
 
-            // Аннулируем голос
-            const success = Vote.cancelVote(parseInt(voteId), req.admin.id, reason.trim());
+            // Аннулируем все голоса
+            let cancelledCount = 0;
+            const candidatesToDecrement = [];
 
-            if (!success) {
-                return res.status(500).json({ error: 'Не удалось аннулировать голос' });
+            for (const vote of activeVotes) {
+                const success = Vote.cancelVote(vote.id, req.admin.id, reason.trim());
+
+                if (success) {
+                    cancelledCount++;
+
+                    // Сохраняем кандидатов для декремента
+                    if (vote.vote_type === 'candidate' && vote.candidate_id) {
+                        candidatesToDecrement.push(vote.candidate_id);
+                    }
+                }
             }
 
-            // Уменьшаем счетчик кандидата (если это был голос за кандидата)
-            if (vote.vote_type === 'candidate' && vote.candidate_id) {
-                Candidate.decrementVoteCount(vote.candidate_id);
+            // Уменьшаем счетчики всех кандидатов
+            for (const candidateId of candidatesToDecrement) {
+                Candidate.decrementVoteCount(candidateId);
                 logger.info('Candidate vote count decremented after cancellation', {
-                    candidate_id: vote.candidate_id,
-                    vote_id: voteId
+                    candidate_id: candidateId,
+                    vk_id: vkId
                 });
             }
 
             // Сбрасываем статус избирателя (если список избирателей используется)
             const voterStats = EligibleVoter.getStats();
-            if (voterStats.total > 0) {
-                EligibleVoter.unmarkAsVoted(vote.full_name);
-                logger.info('Voter status reset after vote cancellation', {
-                    full_name: vote.full_name,
-                    vote_id: voteId
+            if (voterStats.total > 0 && userVotes.length > 0) {
+                EligibleVoter.unmarkAsVoted(userVotes[0].full_name);
+                logger.info('Voter status reset after votes cancellation', {
+                    full_name: userVotes[0].full_name,
+                    vk_id: vkId
                 });
             }
 
             // Логируем действие
             Admin.logAction(
                 req.admin.id,
-                'CANCEL_VOTE',
-                `Vote ID: ${voteId}, User: ${vote.full_name}, Shift: ${vote.shift_name}, Reason: ${reason}`,
+                'CANCEL_ALL_USER_VOTES',
+                `VK ID: ${vkId}, User: ${userVotes[0].full_name}, Cancelled: ${cancelledCount} votes, Reason: ${reason}`,
                 req.ip
             );
 
-            // Отправляем уведомление в VK
+            // Отправляем одно уведомление о том, что ВСЕ голоса аннулированы
             try {
                 const botApiUrl = process.env.BOT_API_URL || 'http://localhost:3001';
                 const fetch = require('node-fetch');
 
-                await fetch(`${botApiUrl}/api/notify-vote-cancelled`, {
+                await fetch(`${botApiUrl}/api/notify-all-votes-cancelled`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        vkId: vote.vk_id,
-                        shiftName: vote.shift_name,
-                        reason: reason.trim()
+                        vkId: vkId.toString(),
+                        reason: reason.trim(),
+                        votesCount: cancelledCount
                     })
                 });
             } catch (notifyError) {
@@ -641,7 +785,8 @@ class AdminController {
 
             res.json({
                 success: true,
-                message: 'Голос аннулирован'
+                message: `Аннулировано голосов: ${cancelledCount}`,
+                cancelledCount
             });
 
         } catch (error) {

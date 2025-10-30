@@ -19,7 +19,15 @@
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
       "Bash(netstat:*)",
-      "Bash(move srcdatabasevoting.db srcdatabasevoting.db.backup)"
+      "Bash(move srcdatabasevoting.db srcdatabasevoting.db.backup)",
+      "Bash(cmd /c taskkill /F /PID 12716)",
+      "Bash(cmd /c \"taskkill /F /PID 17732\")",
+      "Bash(cmd /c \"taskkill /F /PID 17212\")",
+      "Bash(cmd /c \"taskkill /F /PID 1420\")",
+      "Bash(cmd /c \"taskkill /F /PID 12944\")",
+      "Bash(cmd /c \"taskkill /F /PID 7592\")",
+      "Bash(cmd /c \"taskkill /F /PID 20900 && taskkill /F /PID 18228\")",
+      "Bash(cmd /c \"taskkill /F /PID 3364 && taskkill /F /PID 5332\")"
     ],
     "deny": [],
     "ask": []

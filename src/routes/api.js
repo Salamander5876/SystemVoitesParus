@@ -53,4 +53,24 @@ router.get('/users/nicknames', async (req, res) => {
     }
 });
 
+// Проверить избирателя по ФИО (для бота)
+router.post('/check-voter', (req, res, next) => {
+    // Проверка секретного ключа бота
+    const botSecret = req.headers['x-bot-secret'];
+    if (botSecret !== process.env.VK_SECRET) {
+        return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+    next();
+}, VoteController.checkVoterEligibility);
+
+// Генерация уникального псевдонима (для бота)
+router.post('/generate-nickname', (req, res, next) => {
+    // Проверка секретного ключа бота
+    const botSecret = req.headers['x-bot-secret'];
+    if (botSecret !== process.env.VK_SECRET) {
+        return res.status(403).json({ error: 'Доступ запрещён' });
+    }
+    next();
+}, VoteController.generateNickname);
+
 module.exports = router;

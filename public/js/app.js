@@ -4,7 +4,6 @@ const socket = io();
 // Элементы DOM
 const elements = {
     votingStatus: document.getElementById('voting-status'),
-    totalVotes: document.getElementById('total-votes'),
     uniqueVoters: document.getElementById('unique-voters'),
     votesLogBody: document.getElementById('votes-log-body')
 };
@@ -43,7 +42,6 @@ function updateStatus(data) {
     elements.votingStatus.textContent = status.text;
     elements.votingStatus.className = 'status ' + status.class;
 
-    elements.totalVotes.textContent = data.totalVotes || 0;
     elements.uniqueVoters.textContent = data.uniqueVoters || 0;
 }
 
@@ -54,36 +52,20 @@ async function loadVotesLog() {
         const data = await response.json();
 
         if (data.success) {
-            allShifts = data.shifts;
-            renderVotesLog(data.votes, data.shifts);
+            renderVotesLog(data.votes);
         }
     } catch (error) {
         console.error('Error loading votes log:', error);
-        elements.votesLogBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>';
+        elements.votesLogBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: red;">Ошибка загрузки данных</td></tr>';
     }
 }
 
 // Рендеринг таблицы голосов
-function renderVotesLog(votes, shifts) {
+function renderVotesLog(votes) {
     if (votes.length === 0) {
-        elements.votesLogBody.innerHTML = '<tr><td colspan="' + (5 + shifts.length) + '" style="text-align: center; color: #999;">Голосов пока нет</td></tr>';
+        elements.votesLogBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">Голосов пока нет</td></tr>';
         return;
     }
-
-    // Обновляем заголовки таблицы
-    const tableHead = document.querySelector('#votes-log-table thead tr');
-
-    // Очищаем существующие заголовки смен
-    const existingShiftColumns = tableHead.querySelectorAll('.shift-column');
-    existingShiftColumns.forEach(col => col.remove());
-
-    // Добавляем заголовки смен
-    shifts.forEach(shiftName => {
-        const th = document.createElement('th');
-        th.className = 'shift-column';
-        th.textContent = `Смена (${shiftName})`;
-        tableHead.appendChild(th);
-    });
 
     // Сортируем голоса по ID (от новых к старым)
     votes.sort((a, b) => b.id - a.id);
@@ -104,35 +86,30 @@ function renderVotesLog(votes, shifts) {
             timeZone: 'Asia/Chita'
         });
 
-        // Формируем имя из VK
-        let vkName = '';
+        // Формируем ссылку на профиль VK
+        let vkProfile = '';
         if (vote.vk_first_name && vote.vk_last_name) {
-            vkName = `${vote.vk_first_name} ${vote.vk_last_name}`;
+            const vkName = `${vote.vk_first_name} ${vote.vk_last_name}`;
+            const vkLink = `https://vk.com/id${vote.vk_id}`;
+            vkProfile = `<a href="${vkLink}" target="_blank" rel="noopener noreferrer">${vkName}</a>`;
         } else {
-            vkName = '<span style="color: #999;">—</span>';
+            vkProfile = '<span style="color: #999;">—</span>';
         }
 
-        const vkLink = `https://vk.com/id${vote.vk_id}`;
+        // Определяем статус голоса
+        const status = vote.is_cancelled
+            ? '<span class="vote-status cancelled">Аннулирован</span>'
+            : '<span class="vote-status counted">Учтён</span>';
 
-        // Базовые колонки
-        let rowHTML = `
+        // Формируем строку таблицы
+        row.innerHTML = `
             <td>${vote.id}</td>
             <td>${date}</td>
             <td>${vote.full_name}</td>
-            <td>${vkName}</td>
-            <td><a href="${vkLink}" target="_blank">${vote.vk_id}</a></td>
+            <td>${vkProfile}</td>
+            <td>${status}</td>
         `;
 
-        // Добавляем колонки для смен
-        shifts.forEach(shiftName => {
-            if (vote.shifts[shiftName]) {
-                rowHTML += '<td><span class="vote-status voted">Проголосовал</span></td>';
-            } else {
-                rowHTML += '<td><span class="vote-status not-voted">—</span></td>';
-            }
-        });
-
-        row.innerHTML = rowHTML;
         elements.votesLogBody.appendChild(row);
     });
 }
@@ -250,7 +227,6 @@ async function loadElectionResults() {
 function setupWebSocket() {
     // Обновление статистики в реальном времени
     socket.on('stats_update', (data) => {
-        elements.totalVotes.textContent = data.totalVotes || 0;
         elements.uniqueVoters.textContent = data.uniqueVoters || 0;
     });
 

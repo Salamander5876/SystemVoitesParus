@@ -33,8 +33,8 @@ router.get('/votes', AdminController.getAllVotes);
 // Журнал аудита голосов (с полной информацией)
 router.get('/votes/audit', AdminController.getVotesAuditLog);
 
-// Аннулирование голоса
-router.post('/votes/:voteId/cancel', AdminController.cancelVote);
+// Аннулирование ВСЕХ голосов пользователя по VK ID
+router.post('/votes/user/:vkId/cancel', AdminController.cancelVote);
 
 // Экспорт данных
 router.get('/export/votes', AdminController.exportVotes);

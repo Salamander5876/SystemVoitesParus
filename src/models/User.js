@@ -89,7 +89,7 @@ class User {
     static hasVotedOnShift(userId, shiftId) {
         const stmt = db.prepare(`
             SELECT id FROM votes
-            WHERE user_id = ? AND shift_id = ?
+            WHERE user_id = ? AND shift_id = ? AND is_cancelled = 0
         `);
         return stmt.get(userId, shiftId) !== undefined;
     }
