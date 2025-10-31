@@ -475,9 +475,10 @@ vk.updates.on('message_new', async (context) => {
 
                 if (failed.length === 0) {
                     // Все голоса успешно отправлены
+                    const siteUrl = process.env.SITE_URL || 'http://localhost:3000';
                     const finalMsg = `✅ Спасибо! Все ваши голоса успешно учтены.\n\n` +
                         `Ваш псевдоним: ${state.data.nickname}\n\n` +
-                        `Вы проголосовали по ${results.length} сменам.`;
+                        `Свой голос вы можете проверить на сайте:\n${siteUrl}`;
 
                     resetUserState(userId);
 

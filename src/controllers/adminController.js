@@ -891,28 +891,14 @@ class AdminController {
                 const users = User.getAll();
 
                 if (users.length > 0) {
-                    const shifts = Shift.getAll().filter(s => s.is_active);
-                    let resultsText = '📊 Результаты выборов опубликованы!\n\n';
-
-                    for (const shift of shifts) {
-                        const candidates = Candidate.getByShift(shift.id).filter(c => c.is_active);
-
-                        if (candidates.length === 0) continue;
-
-                        // Находим победителя (с максимальным количеством голосов)
-                        const winner = candidates.reduce((max, c) =>
-                            c.vote_count > max.vote_count ? c : max
-                        , candidates[0]);
-
-                        resultsText += `${shift.name}:\n`;
-                        resultsText += `🏆 Победитель: ${winner.name} (${winner.vote_count} голосов)\n\n`;
-                    }
-
-                    resultsText += `Подробные результаты доступны на сайте: ${process.env.SITE_URL || 'http://localhost:3000'}`;
+                    const siteUrl = process.env.SITE_URL || 'http://localhost:3000';
+                    const message = `🏆 Результаты выборов опубликованы!\n\n` +
+                        `Узнайте, кто победил на выборах!\n\n` +
+                        `Подробные результаты смотрите на сайте:\n${siteUrl}`;
 
                     let queued = 0;
                     users.forEach(user => {
-                        MessageQueue.enqueue(user.vk_id, resultsText);
+                        MessageQueue.enqueue(user.vk_id, message);
                         queued++;
                     });
 
@@ -1192,29 +1178,14 @@ class AdminController {
                 });
             }
 
-            // Получаем все активные смены и их победителей
-            const shifts = Shift.getAll().filter(s => s.is_active);
-            let resultsText = '📊 Результаты выборов опубликованы!\n\n';
-
-            for (const shift of shifts) {
-                const candidates = Candidate.getByShift(shift.id).filter(c => c.is_active);
-
-                if (candidates.length === 0) continue;
-
-                // Находим победителя (с максимальным количеством голосов)
-                const winner = candidates.reduce((max, c) =>
-                    c.vote_count > max.vote_count ? c : max
-                , candidates[0]);
-
-                resultsText += `${shift.name}:\n`;
-                resultsText += `🏆 Победитель: ${winner.name} (${winner.vote_count} голосов)\n\n`;
-            }
-
-            resultsText += `Подробные результаты доступны на сайте: ${process.env.SITE_URL || 'http://localhost:3000'}`;
+            const siteUrl = process.env.SITE_URL || 'http://localhost:3000';
+            const message = `🏆 Результаты выборов опубликованы!\n\n` +
+                `Узнайте, кто победил на выборах!\n\n` +
+                `Подробные результаты смотрите на сайте:\n${siteUrl}`;
 
             let queued = 0;
             users.forEach(user => {
-                MessageQueue.enqueue(user.vk_id, resultsText);
+                MessageQueue.enqueue(user.vk_id, message);
                 queued++;
             });
 
