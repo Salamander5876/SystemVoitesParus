@@ -36,21 +36,21 @@
 
 ```bash
 # Обновление системы (Ubuntu/Debian)
-sudo apt update && sudo apt upgrade -y
+apt update && apt upgrade -y
 
 # Установка Node.js 18.x
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-sudo apt install -y nodejs
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs
 
 # Проверка версий
 node --version
 npm --version
 
 # Установка PM2 (менеджер процессов)
-sudo npm install -g pm2
+npm install -g pm2
 
 # Установка Nginx (опционально, для reverse proxy)
-sudo apt install -y nginx
+apt install -y nginx
 ```
 
 ### 2. Клонирование проекта
