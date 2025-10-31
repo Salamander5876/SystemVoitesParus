@@ -480,87 +480,6 @@ body::after {
     font-weight: 500;
 }
 
-.winner-announcement {
-    background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
-    border-radius: var(--border-radius);
-    padding: 35px 30px;
-    margin-bottom: 30px;
-    text-align: center;
-    box-shadow: 0 8px 30px rgba(255, 215, 0, 0.4);
-    border: 3px solid #FFD700;
-    animation: winner-pulse 3s ease-in-out infinite;
-}
-
-@keyframes winner-pulse {
-    0%, 100% {
-        transform: scale(1);
-        box-shadow: 0 8px 30px rgba(255, 215, 0, 0.4);
-    }
-    50% {
-        transform: scale(1.02);
-        box-shadow: 0 12px 40px rgba(255, 215, 0, 0.6);
-    }
-}
-
-.winner-badge {
-    font-size: 4em;
-    margin-bottom: 15px;
-    animation: rotate-badge 4s linear infinite;
-}
-
-@keyframes rotate-badge {
-    0%, 100% { transform: rotate(0deg); }
-    25% { transform: rotate(-10deg); }
-    75% { transform: rotate(10deg); }
-}
-
-.winner-announcement h4 {
-    font-size: 1.4em;
-    color: #8B4513;
-    margin-bottom: 18px;
-    text-transform: uppercase;
-    letter-spacing: 3px;
-    font-weight: 700;
-}
-
-.winner-name {
-    font-size: 2.5em;
-    font-weight: 800;
-    color: #4a1e00;
-    margin-bottom: 20px;
-    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-.winner-stats {
-    display: flex;
-    justify-content: center;
-    gap: 30px;
-    margin-top: 20px;
-    flex-wrap: wrap;
-}
-
-.winner-stat {
-    background: rgba(255, 255, 255, 0.7);
-    padding: 12px 25px;
-    border-radius: 25px;
-    font-weight: 700;
-    border: 2px solid rgba(255, 255, 255, 0.9);
-}
-
-.winner-stat-label {
-    font-size: 0.9em;
-    color: #8B4513;
-    display: block;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.winner-stat-value {
-    font-size: 1.8em;
-    color: #4a1e00;
-}
-
 .candidates-list h5 {
     font-size: 1.4em;
     margin-bottom: 20px;
@@ -586,6 +505,23 @@ body::after {
     box-shadow: -4px 0 0 var(--primary-red), var(--box-shadow);
 }
 
+/* Стили для победителя - инверсия цветов */
+.candidate-item.winner {
+    background: linear-gradient(135deg, var(--primary-red) 0%, var(--dark-red) 100%);
+    border-color: var(--dark-red);
+    box-shadow: 0 8px 20px rgba(184, 37, 46, 0.4);
+}
+
+.candidate-item.winner:hover {
+    transform: translateX(8px);
+    box-shadow: -4px 0 0 var(--dark-red), 0 8px 20px rgba(184, 37, 46, 0.5);
+}
+
+.candidate-item.winner .candidate-name {
+    color: var(--white);
+    font-size: 1.3em;
+}
+
 .candidate-name {
     font-weight: 700;
     font-size: 1.2em;
@@ -607,10 +543,22 @@ body::after {
     box-shadow: 0 4px 12px rgba(184, 37, 46, 0.3);
 }
 
+/* Инверсия для победителя */
+.candidate-item.winner .candidate-votes {
+    background: var(--white);
+    color: var(--text-dark);
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.3);
+}
+
 .candidate-percentage {
     font-size: 1.4em;
     font-weight: 800;
     color: var(--primary-red);
+}
+
+/* Инверсия для победителя */
+.candidate-item.winner .candidate-percentage {
+    color: var(--white);
 }
 
 .special-votes {
@@ -801,30 +749,6 @@ body::after {
         font-size: 1.6em;
     }
 
-    .winner-announcement {
-        padding: 25px 20px;
-    }
-
-    .winner-badge {
-        font-size: 3em;
-    }
-
-    .winner-name {
-        font-size: 2em;
-    }
-
-    .winner-stats {
-        gap: 15px;
-    }
-
-    .winner-stat {
-        padding: 10px 18px;
-    }
-
-    .winner-stat-value {
-        font-size: 1.5em;
-    }
-
     .candidate-item {
         flex-direction: column;
         align-items: flex-start;
@@ -881,15 +805,6 @@ body::after {
     }
 
     .results-title {
-        font-size: 1.6em;
-    }
-
-    .winner-announcement h4 {
-        font-size: 1.1em;
-        letter-spacing: 2px;
-    }
-
-    .winner-name {
         font-size: 1.6em;
     }
 

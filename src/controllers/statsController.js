@@ -2,6 +2,7 @@ const Shift = require('../models/Shift');
 const Candidate = require('../models/Candidate');
 const Vote = require('../models/Vote');
 const Settings = require('../models/Settings');
+const { convertArrayToLocalTime, convertToLocalTime } = require('../utils/timezone');
 
 class StatsController {
     // Получить статус голосования
@@ -193,9 +194,12 @@ class StatsController {
                 vote.id = index + 1;
             });
 
+            // Конвертируем время в локальную timezone
+            const votesWithLocalTime = convertArrayToLocalTime(votesArray, ['created_at']);
+
             res.json({
                 success: true,
-                votes: votesArray
+                votes: votesWithLocalTime
             });
 
         } catch (error) {
@@ -324,6 +328,224 @@ class StatsController {
                 voters_log: Object.values(userVotesMap),
                 shifts: allShifts.map(s => s.name)
             });
+
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    // Экспорт итоговой ведомости (публичный, только при опубликованных результатах)
+    static exportPublicResults(req, res, next) {
+        try {
+            const resultsPublished = Settings.getResultsPublished();
+
+            // Проверяем, опубликованы ли результаты
+            if (!resultsPublished) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Результаты еще не опубликованы'
+                });
+            }
+
+            const XLSX = require('xlsx');
+            const groupedVotes = Vote.getGroupedByNickname();
+            const shiftNames = Vote.getAllShiftNames();
+
+            // ===== ЛИСТ 1: ГОЛОСА =====
+            const votesData = [];
+
+            // Примечание о рандомизации
+            votesData.push(['⚠️ ПРИМЕЧАНИЕ: Порядок строк рандомизирован для обеспечения анонимности голосования']);
+            votesData.push(['']); // Пустая строка
+
+            // Заголовок
+            const votesHeader = ['Псевдоним', ...shiftNames];
+            votesData.push(votesHeader);
+
+            // Данные - сначала собираем все строки
+            const dataRows = [];
+            groupedVotes.forEach(voter => {
+                const row = [voter.nickname];
+
+                shiftNames.forEach(shift => {
+                    const vote = voter.votes[shift];
+                    if (vote) {
+                        let cellValue = vote.candidate;
+                        // Помечаем аннулированные голоса
+                        if (vote.is_cancelled) {
+                            cellValue += ` [АННУЛИРОВАН: ${vote.cancellation_reason || 'причина не указана'}]`;
+                        }
+                        row.push(cellValue);
+                    } else {
+                        row.push('-');
+                    }
+                });
+
+                dataRows.push(row);
+            });
+
+            // РАНДОМИЗАЦИЯ: Перемешиваем строки для анонимности (алгоритм Fisher-Yates)
+            for (let i = dataRows.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [dataRows[i], dataRows[j]] = [dataRows[j], dataRows[i]];
+            }
+
+            // Добавляем перемешанные строки в данные
+            dataRows.forEach(row => votesData.push(row));
+
+            // Создаём workbook
+            const workbook = XLSX.utils.book_new();
+
+            // Лист 1: Голоса
+            const votesWorksheet = XLSX.utils.aoa_to_sheet(votesData);
+
+            // Настраиваем ширину столбцов
+            const votesColWidths = [{ wch: 80 }]; // Первый столбец шире для примечания
+            shiftNames.forEach(() => votesColWidths.push({ wch: 25 })); // Смены
+            votesWorksheet['!cols'] = votesColWidths;
+
+            // Объединяем ячейки для примечания (первая строка)
+            if (!votesWorksheet['!merges']) votesWorksheet['!merges'] = [];
+            votesWorksheet['!merges'].push({
+                s: { r: 0, c: 0 }, // start: row 0, col 0
+                e: { r: 0, c: shiftNames.length } // end: row 0, last column
+            });
+
+            XLSX.utils.book_append_sheet(workbook, votesWorksheet, '1. Голоса (анонимные)');
+
+            // ===== ЛИСТ 2: ИЗБИРАТЕЛИ =====
+            const EligibleVoter = require('../models/EligibleVoter');
+            const votersData = [];
+
+            // Заголовок
+            votersData.push(['№', 'ФИО', 'Проголосовал', 'Дата голосования']);
+
+            // Получаем всех избирателей и сортируем по ФИО
+            const allVoters = EligibleVoter.getAll();
+            allVoters.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+
+            // Получаем все голоса с полной информацией
+            const allVotesInfo = Vote.getAllWithFullInfo();
+
+            // Создаем карту голосов по ФИО (нормализованное)
+            const votesMap = {};
+            allVotesInfo.forEach(vote => {
+                if (vote.is_cancelled) return; // Пропускаем аннулированные голоса
+
+                const normalizedName = vote.full_name.trim().replace(/\s+/g, ' ').toLowerCase();
+
+                if (!votesMap[normalizedName]) {
+                    votesMap[normalizedName] = {
+                        hasVoted: true,
+                        firstVoteDate: vote.created_at
+                    };
+                } else {
+                    // Берем самую раннюю дату
+                    if (new Date(vote.created_at) < new Date(votesMap[normalizedName].firstVoteDate)) {
+                        votesMap[normalizedName].firstVoteDate = vote.created_at;
+                    }
+                }
+            });
+
+            // Добавляем избирателей с информацией о голосовании
+            allVoters.forEach((voter, index) => {
+                const normalizedName = voter.full_name.trim().replace(/\s+/g, ' ').toLowerCase();
+                const voteInfo = votesMap[normalizedName];
+
+                let hasVoted = 'Нет';
+                let voteDate = '-';
+
+                if (voteInfo && voteInfo.hasVoted) {
+                    hasVoted = 'Да';
+                    // Конвертируем UTC время в локальное
+                    voteDate = convertToLocalTime(voteInfo.firstVoteDate);
+                }
+
+                votersData.push([index + 1, voter.full_name, hasVoted, voteDate]);
+            });
+
+            // Создаём лист избирателей
+            const votersWorksheet = XLSX.utils.aoa_to_sheet(votersData);
+            votersWorksheet['!cols'] = [
+                { wch: 10 }, // №
+                { wch: 40 }, // ФИО
+                { wch: 15 }, // Проголосовал
+                { wch: 20 }  // Дата голосования
+            ];
+            XLSX.utils.book_append_sheet(workbook, votersWorksheet, '2. Избиратели');
+
+            // ===== ЛИСТ 3: ИТОГИ =====
+            const resultsData = [];
+            const allShifts = Shift.getAll();
+
+            allShifts.forEach((shift, shiftIndex) => {
+                // Заголовок смены
+                if (shiftIndex > 0) {
+                    resultsData.push(['']); // Пустая строка между сменами
+                    resultsData.push(['']); // Еще одна для лучшего разделения
+                }
+                resultsData.push([`СМЕНА: ${shift.name}`]);
+                resultsData.push(['']);
+
+                // Получаем статистику
+                const shiftStats = Shift.getWithStats(shift.id);
+                const candidates = Candidate.getStatsForShift(shift.id);
+
+                // Сортируем по количеству голосов
+                const sortedCandidates = candidates.sort((a, b) => b.vote_count - a.vote_count);
+
+                // Определяем победителя
+                const winner = sortedCandidates.length > 0 ? sortedCandidates[0] : null;
+
+                // Победитель
+                if (winner) {
+                    resultsData.push(['🏆 ПОБЕДИТЕЛЬ:', winner.name]);
+                    resultsData.push(['Голосов:', winner.vote_count]);
+                    const percentage = shiftStats.stats.total_votes > 0
+                        ? ((winner.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
+                        : 0;
+                    resultsData.push(['Процент:', `${percentage}%`]);
+                } else {
+                    resultsData.push(['ПОБЕДИТЕЛЬ:', 'Не определен']);
+                }
+                resultsData.push(['']);
+
+                // Рейтинг кандидатов
+                resultsData.push(['РЕЙТИНГ КАНДИДАТОВ:']);
+                resultsData.push(['Кандидат', 'Голосов', 'Процент']);
+
+                sortedCandidates.forEach((candidate) => {
+                    const percentage = shiftStats.stats.total_votes > 0
+                        ? ((candidate.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
+                        : 0;
+                    resultsData.push([
+                        candidate.name,
+                        candidate.vote_count,
+                        `${percentage}%`
+                    ]);
+                });
+            });
+
+            // Создаём лист итогов
+            const resultsWorksheet = XLSX.utils.aoa_to_sheet(resultsData);
+            resultsWorksheet['!cols'] = [
+                { wch: 35 }, // Кандидат
+                { wch: 15 }, // Голосов
+                { wch: 15 }  // Процент
+            ];
+            XLSX.utils.book_append_sheet(workbook, resultsWorksheet, '3. Итоги');
+
+            // Генерируем файл
+            const buffer = XLSX.write(workbook, {
+                type: 'buffer',
+                bookType: 'xlsx',
+                bookSST: false
+            });
+
+            // Отправляем файл
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', 'attachment; filename=results.xlsx');
+            res.send(buffer);
 
         } catch (error) {
             next(error);

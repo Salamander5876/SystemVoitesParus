@@ -657,7 +657,7 @@ function renderVoters(voters) {
     }
 
     voters.forEach(voter => {
-        const votedAt = voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU', {
+        const votedAt = voter.voted_at ? new Date(voter.voted_at + 'Z').toLocaleString('ru-RU', {
             timeZone: 'Asia/Chita'
         }) : '-';
         const row = document.createElement('tr');

@@ -134,43 +134,15 @@ async function loadElectionResults() {
                 const shiftDiv = document.createElement('div');
                 shiftDiv.className = 'shift-result';
 
-                let winnerHTML = '';
-                if (shiftResult.winner) {
-                    winnerHTML = `
-                        <div class="winner-announcement">
-                            <div class="winner-badge">🏆</div>
-                            <h4>Победитель</h4>
-                            <div class="winner-name">${shiftResult.winner.name}</div>
-                            <div class="winner-stats">
-                                <div class="winner-stat">
-                                    <span class="winner-stat-label">Голосов</span>
-                                    <span class="winner-stat-value">${shiftResult.winner.vote_count}</span>
-                                </div>
-                                <div class="winner-stat">
-                                    <span class="winner-stat-label">Процент</span>
-                                    <span class="winner-stat-value">${shiftResult.winner.percentage}%</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                } else {
-                    winnerHTML = `
-                        <div class="winner-announcement" style="background: linear-gradient(135deg, #e0e0e0 0%, #bdbdbd 100%);">
-                            <div class="winner-badge">❓</div>
-                            <h4>Победитель не определен</h4>
-                        </div>
-                    `;
-                }
-
                 let candidatesHTML = '';
                 if (shiftResult.candidates && shiftResult.candidates.length > 0) {
                     candidatesHTML = `
                         <div class="candidates-list">
-                            <h5>Все кандидаты</h5>
+                            <h5>Рейтинг кандидатов</h5>
                             ${shiftResult.candidates.map((candidate, index) => `
-                                <div class="candidate-item">
+                                <div class="candidate-item ${index === 0 ? 'winner' : ''}">
                                     <div class="candidate-name">
-                                        ${index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '•'} ${candidate.name}
+                                        ${index === 0 ? '' : ''} ${candidate.name}
                                     </div>
                                     <div class="candidate-stats-inline">
                                         <span class="candidate-votes">${candidate.vote_count} голосов</span>
@@ -204,12 +176,7 @@ async function loadElectionResults() {
                 shiftDiv.innerHTML = `
                     <div class="shift-result-header">
                         <h3>${shiftResult.shift.name}</h3>
-                        <div class="shift-result-stats">
-                            Всего голосов: ${shiftResult.stats.total_votes} |
-                            Проголосовало: ${shiftResult.stats.unique_voters}
-                        </div>
                     </div>
-                    ${winnerHTML}
                     ${candidatesHTML}
                     ${specialVotesHTML}
                 `;
@@ -252,7 +219,7 @@ function setupWebSocket() {
 // Функция скачивания итоговой ведомости
 async function downloadResults() {
     try {
-        const response = await fetch('/api/admin/export-votes', {
+        const response = await fetch('/api/export-results', {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'

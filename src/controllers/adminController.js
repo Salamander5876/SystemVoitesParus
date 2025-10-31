@@ -8,6 +8,7 @@ const Settings = require('../models/Settings');
 const EligibleVoter = require('../models/EligibleVoter');
 const MessageQueue = require('../models/MessageQueue');
 const logger = require('../utils/logger');
+const { convertArrayToLocalTime, convertToLocalTime } = require('../utils/timezone');
 
 class AdminController {
     // Вход администратора
@@ -265,7 +266,11 @@ class AdminController {
         try {
             const limit = parseInt(req.query.limit) || 100;
             const logs = Admin.getAuditLogs(limit);
-            res.json({ logs });
+
+            // Конвертируем время в локальную timezone
+            const logsWithLocalTime = convertArrayToLocalTime(logs, ['created_at']);
+
+            res.json({ logs: logsWithLocalTime });
         } catch (error) {
             next(error);
         }
@@ -338,9 +343,70 @@ class AdminController {
                 e: { r: 0, c: shiftNames.length } // end: row 0, last column
             });
 
-            XLSX.utils.book_append_sheet(workbook, votesWorksheet, 'Голоса');
+            XLSX.utils.book_append_sheet(workbook, votesWorksheet, '1. Голоса (анонимные)');
 
-            // ===== ЛИСТ 2: ИТОГИ =====
+            // ===== ЛИСТ 2: ИЗБИРАТЕЛИ =====
+            const EligibleVoter = require('../models/EligibleVoter');
+            const votersData = [];
+
+            // Заголовок
+            votersData.push(['№', 'ФИО', 'Проголосовал', 'Дата голосования']);
+
+            // Получаем всех избирателей и сортируем по ФИО
+            const allVoters = EligibleVoter.getAll();
+            allVoters.sort((a, b) => a.full_name.localeCompare(b.full_name, 'ru'));
+
+            // Получаем все голоса с полной информацией
+            const allVotesInfo = Vote.getAllWithFullInfo();
+
+            // Создаем карту голосов по ФИО (нормализованное)
+            const votesMap = {};
+            allVotesInfo.forEach(vote => {
+                if (vote.is_cancelled) return; // Пропускаем аннулированные голоса
+
+                const normalizedName = vote.full_name.trim().replace(/\s+/g, ' ').toLowerCase();
+
+                if (!votesMap[normalizedName]) {
+                    votesMap[normalizedName] = {
+                        hasVoted: true,
+                        firstVoteDate: vote.created_at
+                    };
+                } else {
+                    // Берем самую раннюю дату
+                    if (new Date(vote.created_at) < new Date(votesMap[normalizedName].firstVoteDate)) {
+                        votesMap[normalizedName].firstVoteDate = vote.created_at;
+                    }
+                }
+            });
+
+            // Добавляем избирателей с информацией о голосовании
+            allVoters.forEach((voter, index) => {
+                const normalizedName = voter.full_name.trim().replace(/\s+/g, ' ').toLowerCase();
+                const voteInfo = votesMap[normalizedName];
+
+                let hasVoted = 'Нет';
+                let voteDate = '-';
+
+                if (voteInfo && voteInfo.hasVoted) {
+                    hasVoted = 'Да';
+                    // Конвертируем UTC время в локальное
+                    voteDate = convertToLocalTime(voteInfo.firstVoteDate);
+                }
+
+                votersData.push([index + 1, voter.full_name, hasVoted, voteDate]);
+            });
+
+            // Создаём лист избирателей
+            const votersWorksheet = XLSX.utils.aoa_to_sheet(votersData);
+            votersWorksheet['!cols'] = [
+                { wch: 10 }, // №
+                { wch: 40 }, // ФИО
+                { wch: 15 }, // Проголосовал
+                { wch: 20 }  // Дата голосования
+            ];
+            XLSX.utils.book_append_sheet(workbook, votersWorksheet, '2. Избиратели');
+
+            // ===== ЛИСТ 3: ИТОГИ =====
             const resultsData = [];
             const allShifts = Shift.getAll();
 
@@ -348,6 +414,7 @@ class AdminController {
                 // Заголовок смены
                 if (shiftIndex > 0) {
                     resultsData.push(['']); // Пустая строка между сменами
+                    resultsData.push(['']); // Еще одна для лучшего разделения
                 }
                 resultsData.push([`СМЕНА: ${shift.name}`]);
                 resultsData.push(['']);
@@ -362,61 +429,43 @@ class AdminController {
                 // Определяем победителя
                 const winner = sortedCandidates.length > 0 ? sortedCandidates[0] : null;
 
-                // Статистика смены
-                resultsData.push(['Всего голосов:', shiftStats.stats.total_votes]);
-                resultsData.push(['Проголосовало:', shiftStats.stats.unique_voters]);
-                resultsData.push(['']);
-
                 // Победитель
                 if (winner) {
-                    resultsData.push(['🏆 ПОБЕДИТЕЛЬ:', winner.name]);
+                    resultsData.push(['ПОБЕДИТЕЛЬ:', winner.name]);
                     resultsData.push(['Голосов:', winner.vote_count]);
                     const percentage = shiftStats.stats.total_votes > 0
                         ? ((winner.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
                         : 0;
                     resultsData.push(['Процент:', `${percentage}%`]);
                 } else {
-                    resultsData.push(['Победитель:', 'Не определен']);
+                    resultsData.push(['ПОБЕДИТЕЛЬ:', 'Не определен']);
                 }
                 resultsData.push(['']);
 
-                // Все кандидаты
+                // Рейтинг кандидатов
                 resultsData.push(['РЕЙТИНГ КАНДИДАТОВ:']);
-                resultsData.push(['Место', 'Кандидат', 'Голосов', 'Процент']);
+                resultsData.push(['Кандидат', 'Голосов', 'Процент']);
 
-                sortedCandidates.forEach((candidate, index) => {
-                    const place = index + 1;
-                    const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                sortedCandidates.forEach((candidate) => {
                     const percentage = shiftStats.stats.total_votes > 0
                         ? ((candidate.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
                         : 0;
                     resultsData.push([
-                        `${place} ${medal}`,
                         candidate.name,
                         candidate.vote_count,
                         `${percentage}%`
                     ]);
                 });
-
-                // Специальные голоса
-                const againstAll = Vote.getAgainstAllCount(shift.id);
-                const abstain = Vote.getAbstainCount(shift.id);
-
-                resultsData.push(['']);
-                resultsData.push(['СПЕЦИАЛЬНЫЕ ГОЛОСА:']);
-                resultsData.push(['Против всех:', againstAll]);
-                resultsData.push(['Воздержался:', abstain]);
             });
 
             // Создаем лист Итоги
             const resultsWorksheet = XLSX.utils.aoa_to_sheet(resultsData);
             resultsWorksheet['!cols'] = [
-                { wch: 25 },
-                { wch: 30 },
-                { wch: 15 },
-                { wch: 15 }
+                { wch: 35 }, // Кандидат
+                { wch: 15 }, // Голосов
+                { wch: 15 }  // Процент
             ];
-            XLSX.utils.book_append_sheet(workbook, resultsWorksheet, 'Итоги');
+            XLSX.utils.book_append_sheet(workbook, resultsWorksheet, '3. Итоги');
 
             // Генерируем файл
             const buffer = XLSX.write(workbook, {
@@ -703,9 +752,12 @@ class AdminController {
                 vote.id = index + 1;
             });
 
+            // Конвертируем время в локальную timezone
+            const votesWithLocalTime = convertArrayToLocalTime(votesArray, ['created_at']);
+
             res.json({
                 success: true,
-                votes: votesArray
+                votes: votesWithLocalTime
             });
 
         } catch (error) {

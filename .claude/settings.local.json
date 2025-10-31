@@ -27,7 +27,10 @@
       "Bash(cmd /c \"taskkill /F /PID 12944\")",
       "Bash(cmd /c \"taskkill /F /PID 7592\")",
       "Bash(cmd /c \"taskkill /F /PID 20900 && taskkill /F /PID 18228\")",
-      "Bash(cmd /c \"taskkill /F /PID 3364 && taskkill /F /PID 5332\")"
+      "Bash(cmd /c \"taskkill /F /PID 3364 && taskkill /F /PID 5332\")",
+      "Bash(curl:*)",
+      "Bash(cmd /c \"taskkill /F /PID 20792\")",
+      "Bash(npm start --prefix \"C:\\Users\\Vovan\\OneDrive\\Рабочий стол\\GGG\")"
     ],
     "deny": [],
     "ask": []

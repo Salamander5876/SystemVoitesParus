@@ -40,6 +40,9 @@ router.get('/votes/public-log', StatsController.getPublicVotesLog);
 // Результаты выборов
 router.get('/election-results', StatsController.getElectionResults);
 
+// Скачать итоговую ведомость (публичный доступ только при опубликованных результатах)
+router.get('/export-results', StatsController.exportPublicResults);
+
 // Получить все псевдонимы (для проверки уникальности при генерации)
 router.get('/users/nicknames', async (req, res) => {
     try {

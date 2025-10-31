@@ -6,6 +6,9 @@ const Admin = require('../src/models/Admin');
 
 console.log('Инициализация базы данных...');
 
+// Устанавливаем timezone для процесса Node.js
+process.env.TZ = 'Asia/Chita'; // UTC+9
+
 try {
     // Читаем SQL файлы
     const initSQL = fs.readFileSync(
