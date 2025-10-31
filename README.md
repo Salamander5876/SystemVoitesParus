@@ -57,16 +57,16 @@ apt install -y nginx
 
 ```bash
 # Установка Git (если не установлен)
-sudo apt install -y git
+apt install -y git
 
 # Переход в директорию для веб-приложений
 cd /var/www
 
 # Клонирование репозитория
-sudo git clone https://github.com/Salamander5876/SystemVoitesParus.git voting-system
+git clone https://github.com/Salamander5876/SystemVoitesParus.git voting-system
 
 # Установка прав доступа
-sudo chown -R $USER:$USER voting-system
+chown -R $USER:$USER voting-system
 
 # Переход в директорию проекта
 cd voting-system
@@ -183,7 +183,7 @@ pm2 restart voting-system
 Создайте конфигурацию Nginx:
 
 ```bash
-sudo nano /etc/nginx/sites-available/voting-system
+nano /etc/nginx/sites-available/voting-system
 ```
 
 Добавьте конфигурацию:
@@ -220,33 +220,33 @@ server {
 Активируйте конфигурацию:
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/voting-system /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
+ln -s /etc/nginx/sites-available/voting-system /etc/nginx/sites-enabled/
+nginx -t
+systemctl reload nginx
 ```
 
 ### 9. Настройка SSL (Let's Encrypt)
 
 ```bash
 # Установка Certbot
-sudo apt install -y certbot python3-certbot-nginx
+apt install -y certbot python3-certbot-nginx
 
 # Получение сертификата
-sudo certbot --nginx -d ваш-домен.com -d www.ваш-домен.com
+certbot --nginx -d ваш-домен.com -d www.ваш-домен.com
 
 # Автоматическое обновление
-sudo certbot renew --dry-run
+certbot renew --dry-run
 ```
 
 ### 10. Настройка файрвола
 
 ```bash
 # Открытие портов
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 22/tcp
-sudo ufw enable
-sudo ufw status
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw allow 22/tcp
+ufw enable
+ufw status
 ```
 
 ## Локальная разработка
@@ -468,10 +468,10 @@ pm2 restart voting-system --max-memory-restart 500M
 
 ```bash
 # Проверка сертификата
-sudo certbot certificates
+ certbot certificates
 
 # Обновление сертификата
-sudo certbot renew --force-renewal
+ certbot renew --force-renewal
 ```
 
 ## Безопасность
