@@ -735,6 +735,15 @@ table tr:hover {
     background: linear-gradient(135deg, #2980b9 0%, #21618c 100%);
 }
 
+.control-buttons .btn-info {
+    background: linear-gradient(135deg, #17a2b8 0%, #138496 100%);
+    border: none;
+}
+
+.control-buttons .btn-info:hover {
+    background: linear-gradient(135deg, #138496 0%, #0f6674 100%);
+}
+
 /* Большая кнопка для "Опубликовать результаты" */
 .control-buttons .btn-large {
     font-size: 1.15em;

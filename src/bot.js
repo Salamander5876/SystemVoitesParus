@@ -27,9 +27,7 @@ function getUserState(userId) {
     if (!userStates.has(userId)) {
         userStates.set(userId, {
             state: USER_STATES.IDLE,
-            data: {
-                messagesToDelete: [] // Массив ID сообщений для удаления
-            }
+            data: {}
         });
     }
     return userStates.get(userId);
@@ -46,21 +44,34 @@ function updateUserState(userId, state, data = {}) {
 function resetUserState(userId) {
     userStates.set(userId, {
         state: USER_STATES.IDLE,
-        data: { messagesToDelete: [] }
+        data: {}
     });
 }
 
-// Функция для удаления сообщений пользователя (для анонимности)
-async function deleteUserMessage(userId, conversationMessageId) {
+// Функция для очистки всей истории переписки со стороны бота
+async function clearConversationHistory(userId) {
     try {
-        await vk.api.messages.delete({
+        // Получаем историю сообщений (последние 200)
+        const history = await vk.api.messages.getHistory({
             peer_id: userId,
-            conversation_message_ids: [conversationMessageId],
-            delete_for_all: 1
+            count: 200
         });
-        logger.info(`Deleted message ${conversationMessageId} for user ${userId}`);
+
+        if (history.items && history.items.length > 0) {
+            // Собираем все conversation_message_id
+            const messageIds = history.items.map(msg => msg.conversation_message_id);
+
+            // Удаляем все сообщения (только со стороны бота, delete_for_all: 0)
+            await vk.api.messages.delete({
+                peer_id: userId,
+                conversation_message_ids: messageIds,
+                delete_for_all: 0  // 0 = удалить только для бота
+            });
+
+            logger.info(`Deleted ${messageIds.length} messages from conversation with user ${userId} (bot side only)`);
+        }
     } catch (error) {
-        logger.error('Error deleting message:', error);
+        logger.error('Error clearing conversation history:', error);
     }
 }
 
@@ -157,7 +168,6 @@ vk.updates.on('message_new', async (context) => {
     const userId = context.senderId;
     const text = context.text || '';
     const state = getUserState(userId);
-    const conversationMessageId = context.conversationMessageId;
 
     try {
         // ----------------- Команды -----------------
@@ -248,8 +258,7 @@ vk.updates.on('message_new', async (context) => {
 
             // ----- ВВОД ФИО -----
             case USER_STATES.AWAITING_NAME:
-                // Удаляем сообщение с ФИО для анонимности
-                await deleteUserMessage(userId, conversationMessageId);
+                
 
                 if (text.length < 5 || !/^[а-яА-ЯёЁ\s]+$/.test(text)) {
                     return context.send(MESSAGES.ERROR_INVALID_NAME);
@@ -326,9 +335,6 @@ vk.updates.on('message_new', async (context) => {
 
             // ----- ВЫБОР КАНДИДАТА -----
             case USER_STATES.AWAITING_CANDIDATE:
-                // Удаляем сообщение с выбором кандидата
-                await deleteUserMessage(userId, conversationMessageId);
-
                 const currentShift = state.data.shifts[state.data.currentShiftIndex];
                 const cands = await getCandidates(currentShift.id);
                 const special = [
@@ -374,9 +380,6 @@ vk.updates.on('message_new', async (context) => {
 
             // ----- ПОДТВЕРЖДЕНИЕ ВЫБОРА ДЛЯ СМЕНЫ -----
             case USER_STATES.AWAITING_SHIFT_CONFIRMATION:
-                // Удаляем сообщение с подтверждением
-                await deleteUserMessage(userId, conversationMessageId);
-
                 if (text === BUTTONS.CHANGE) {
                     // Возврат к выбору кандидата
                     updateUserState(userId, USER_STATES.AWAITING_CANDIDATE);
@@ -449,9 +452,6 @@ vk.updates.on('message_new', async (context) => {
 
             // ----- ФИНАЛЬНОЕ ПОДТВЕРЖДЕНИЕ ВСЕХ ГОЛОСОВ -----
             case USER_STATES.AWAITING_FINAL_CONFIRMATION:
-                // Удаляем сообщение с финальным подтверждением
-                await deleteUserMessage(userId, conversationMessageId);
-
                 if (text !== '✅ Подтвердить все голоса') {
                     return context.send('Нажмите «✅ Подтвердить все голоса» для завершения голосования.');
                 }
@@ -475,16 +475,22 @@ vk.updates.on('message_new', async (context) => {
 
                 if (failed.length === 0) {
                     // Все голоса успешно отправлены
-                    resetUserState(userId);
-                    return context.send(
-                        `✅ Спасибо! Все ваши голоса успешно учтены.\n\n` +
+                    const finalMsg = `✅ Спасибо! Все ваши голоса успешно учтены.\n\n` +
                         `Ваш псевдоним: ${state.data.nickname}\n\n` +
-                        `Вы проголосовали по ${results.length} сменам.`,
-                        {
-                            keyboard: Keyboard.builder()
-                                .textButton({ label: '/mystats', color: Keyboard.PRIMARY_COLOR })
-                        }
-                    );
+                        `Вы проголосовали по ${results.length} сменам.`;
+
+                    resetUserState(userId);
+
+                    // Отправляем финальное сообщение
+                    await context.send(finalMsg, {
+                        keyboard: Keyboard.builder()
+                            .textButton({ label: '/mystats', color: Keyboard.PRIMARY_COLOR })
+                    });
+
+                    // Очищаем историю переписки со стороны бота для анонимности
+                    await clearConversationHistory(userId);
+
+                    return;
                 } else {
                     // Были ошибки
                     let errorMsg = '⚠️ Некоторые голоса не были учтены:\n\n';
@@ -494,6 +500,8 @@ vk.updates.on('message_new', async (context) => {
                     errorMsg += '\nПопробуйте проголосовать заново или обратитесь к администратору.';
 
                     resetUserState(userId);
+
+                    // Отправляем сообщение об ошибке БЕЗ авто-удаления
                     return context.send(errorMsg, {
                         keyboard: Keyboard.builder()
                             .textButton({ label: BUTTONS.START_VOTING })

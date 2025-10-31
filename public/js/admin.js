@@ -1055,6 +1055,62 @@ document.getElementById('change-password-form').addEventListener('submit', async
     }
 });
 
+// Рассылка уведомления о завершении выборов
+async function sendElectionsClosedNotification() {
+    if (!confirm('Отправить уведомление о завершении выборов всем пользователям?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/broadcast/elections-closed', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showAlert(`${result.message}. Сообщения будут отправлены в течение минуты.`, 'success');
+        } else {
+            showAlert(result.error || 'Ошибка при отправке уведомления', 'error');
+        }
+    } catch (error) {
+        console.error('Send notification error:', error);
+        showAlert('Ошибка при отправке уведомления', 'error');
+    }
+}
+
+// Рассылка результатов выборов
+async function sendResultsNotification() {
+    if (!confirm('Отправить результаты выборов всем пользователям?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/admin/broadcast/results', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            showAlert(`${result.message}. Сообщения будут отправлены в течение минуты.`, 'success');
+        } else {
+            showAlert(result.error || 'Ошибка при отправке результатов', 'error');
+        }
+    } catch (error) {
+        console.error('Send results error:', error);
+        showAlert('Ошибка при отправке результатов', 'error');
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', init);
 

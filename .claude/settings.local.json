@@ -30,7 +30,8 @@
       "Bash(cmd /c \"taskkill /F /PID 3364 && taskkill /F /PID 5332\")",
       "Bash(curl:*)",
       "Bash(cmd /c \"taskkill /F /PID 20792\")",
-      "Bash(npm start --prefix \"C:\\Users\\Vovan\\OneDrive\\Рабочий стол\\GGG\")"
+      "Bash(npm start --prefix \"C:\\Users\\Vovan\\OneDrive\\Рабочий стол\\GGG\")",
+      "Bash(cmd /c \"tasklist | findstr /i node\")"
     ],
     "deny": [],
     "ask": []

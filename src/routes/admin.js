@@ -57,4 +57,8 @@ router.post('/database/reset', AdminController.resetDatabase);
 // Смена пароля
 router.post('/change-password', AdminController.changePassword);
 
+// Рассылка уведомлений
+router.post('/broadcast/elections-closed', AdminController.sendElectionsClosedNotification);
+router.post('/broadcast/results', AdminController.sendResultsNotification);
+
 module.exports = router;

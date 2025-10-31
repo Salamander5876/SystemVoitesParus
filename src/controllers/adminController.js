@@ -886,9 +886,55 @@ class AdminController {
                 });
             }
 
+            // Автоматическая рассылка результатов пользователям
+            try {
+                const users = User.getAll();
+
+                if (users.length > 0) {
+                    const shifts = Shift.getAll().filter(s => s.is_active);
+                    let resultsText = '📊 Результаты выборов опубликованы!\n\n';
+
+                    for (const shift of shifts) {
+                        const candidates = Candidate.getByShift(shift.id).filter(c => c.is_active);
+
+                        if (candidates.length === 0) continue;
+
+                        // Находим победителя (с максимальным количеством голосов)
+                        const winner = candidates.reduce((max, c) =>
+                            c.vote_count > max.vote_count ? c : max
+                        , candidates[0]);
+
+                        resultsText += `${shift.name}:\n`;
+                        resultsText += `🏆 Победитель: ${winner.name} (${winner.vote_count} голосов)\n\n`;
+                    }
+
+                    resultsText += `Подробные результаты доступны на сайте: ${process.env.SITE_URL || 'http://localhost:3000'}`;
+
+                    let queued = 0;
+                    users.forEach(user => {
+                        MessageQueue.enqueue(user.vk_id, resultsText);
+                        queued++;
+                    });
+
+                    Admin.logAction(
+                        req.admin.id,
+                        'AUTO_BROADCAST_RESULTS',
+                        `Автоматически добавлено в очередь ${queued} сообщений с результатами`,
+                        req.ip
+                    );
+
+                    logger.info('Results notification auto-queued on publish', {
+                        admin_id: req.admin.id,
+                        users_count: queued
+                    });
+                }
+            } catch (broadcastError) {
+                logger.error('Failed to auto-broadcast results:', broadcastError);
+            }
+
             res.json({
                 success: true,
-                message: 'Результаты опубликованы'
+                message: 'Результаты опубликованы и отправлены на рассылку'
             });
 
         } catch (error) {
@@ -1082,6 +1128,116 @@ class AdminController {
 
         } catch (error) {
             logger.error('Password change error:', error);
+            next(error);
+        }
+    }
+
+    // Рассылка о завершении выборов
+    static async sendElectionsClosedNotification(req, res, next) {
+        try {
+            // Получаем всех пользователей, которые голосовали
+            const users = User.getAll();
+
+            if (users.length === 0) {
+                return res.json({
+                    success: true,
+                    message: 'Нет пользователей для рассылки',
+                    queued: 0
+                });
+            }
+
+            const message = '🗳 Выборы завершились!\n\nСпасибо за участие. Результаты будут опубликованы в ближайшее время. Вы получите уведомление, когда результаты будут доступны.';
+
+            let queued = 0;
+            users.forEach(user => {
+                MessageQueue.enqueue(user.vk_id, message);
+                queued++;
+            });
+
+            Admin.logAction(
+                req.admin.id,
+                'BROADCAST_ELECTIONS_CLOSED',
+                `Добавлено в очередь ${queued} сообщений`,
+                req.ip
+            );
+
+            logger.info('Elections closed notification queued', {
+                admin_id: req.admin.id,
+                users_count: queued
+            });
+
+            res.json({
+                success: true,
+                message: `Уведомление добавлено в очередь для ${queued} пользователей`,
+                queued
+            });
+
+        } catch (error) {
+            logger.error('Send elections closed notification error:', error);
+            next(error);
+        }
+    }
+
+    // Рассылка результатов выборов
+    static async sendResultsNotification(req, res, next) {
+        try {
+            // Получаем всех пользователей, которые голосовали
+            const users = User.getAll();
+
+            if (users.length === 0) {
+                return res.json({
+                    success: true,
+                    message: 'Нет пользователей для рассылки',
+                    queued: 0
+                });
+            }
+
+            // Получаем все активные смены и их победителей
+            const shifts = Shift.getAll().filter(s => s.is_active);
+            let resultsText = '📊 Результаты выборов опубликованы!\n\n';
+
+            for (const shift of shifts) {
+                const candidates = Candidate.getByShift(shift.id).filter(c => c.is_active);
+
+                if (candidates.length === 0) continue;
+
+                // Находим победителя (с максимальным количеством голосов)
+                const winner = candidates.reduce((max, c) =>
+                    c.vote_count > max.vote_count ? c : max
+                , candidates[0]);
+
+                resultsText += `${shift.name}:\n`;
+                resultsText += `🏆 Победитель: ${winner.name} (${winner.vote_count} голосов)\n\n`;
+            }
+
+            resultsText += `Подробные результаты доступны на сайте: ${process.env.SITE_URL || 'http://localhost:3000'}`;
+
+            let queued = 0;
+            users.forEach(user => {
+                MessageQueue.enqueue(user.vk_id, resultsText);
+                queued++;
+            });
+
+            Admin.logAction(
+                req.admin.id,
+                'BROADCAST_RESULTS',
+                `Добавлено в очередь ${queued} сообщений с результатами`,
+                req.ip
+            );
+
+            logger.info('Results notification queued', {
+                admin_id: req.admin.id,
+                users_count: queued
+            });
+
+            res.json({
+                success: true,
+                message: `Уведомление о результатах добавлено в очередь для ${queued} пользователей`,
+                queued
+            });
+
+        } catch (error) {
+            logger.error('Send results notification error:', error);
             next(error);
         }
     }

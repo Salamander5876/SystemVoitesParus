@@ -20,7 +20,7 @@ class MessageQueue {
             ORDER BY created_at ASC
             LIMIT ?
         `);
-        return stmt.all(limit);
+        return stmt.all(Math.floor(limit));
     }
 
     // Отметить сообщение как отправленное
