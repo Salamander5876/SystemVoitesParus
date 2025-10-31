@@ -886,11 +886,11 @@ async function loadResultsStatus() {
 
         const statusEl = document.getElementById('results-status');
         if (data.published) {
-            statusEl.textContent = '✅ Опубликованы';
-            statusEl.style.color = 'green';
+            statusEl.textContent = 'Опубликованы';
+            
         } else {
-            statusEl.textContent = '🔒 Не опубликованы';
-            statusEl.style.color = '#999';
+            statusEl.textContent = 'Не опубликованы';
+            
         }
     } catch (error) {
         console.error('Error loading results status:', error);
