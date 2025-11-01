@@ -467,7 +467,7 @@ html {
 
 #alert-container {
     position: fixed;
-    top: 80px;
+    top: 200px;
     right: 20px;
     z-index: 999;
     max-width: 400px;
@@ -939,6 +939,7 @@ table tr:hover {
     border-radius: var(--border-radius);
     margin-bottom: 20px;
     animation: slideInRight 0.3s ease-out;
+    margin-top: 70px;
 }
 
 @keyframes slideInRight {
