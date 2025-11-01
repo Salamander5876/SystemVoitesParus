@@ -8,6 +8,7 @@ const { QuestionManager } = require('vk-io-question');
 const axios = require('axios');
 const logger = require('./utils/logger');
 const { MESSAGES, BUTTONS, USER_STATES } = require('./config/constants');
+const botMessageQueue = require('./utils/messageQueue');
 
 const vk = new VK({
     token: process.env.VK_TOKEN,
@@ -167,9 +168,12 @@ vk.updates.on('message_new', questionManager.middleware);
 vk.updates.on('message_new', async (context) => {
     const userId = context.senderId;
     const text = context.text || '';
-    const state = getUserState(userId);
 
-    try {
+    // Оборачиваем всю обработку в очередь пользователя
+    return botMessageQueue.enqueue(userId, async () => {
+        const state = getUserState(userId);
+
+        try {
         // ----------------- Команды -----------------
         if (text === '/start' || text === 'Начать') {
             resetUserState(userId);
@@ -510,10 +514,11 @@ vk.updates.on('message_new', async (context) => {
                 }
         }
 
-    } catch (error) {
-        logger.error('Bot error:', error);
-        return context.send('Произошла ошибка. Попробуйте /start');
-    }
+        } catch (error) {
+            logger.error('Bot error:', error);
+            return context.send('Произошла ошибка. Попробуйте /start');
+        }
+    }); // Закрываем botMessageQueue.enqueue
 });
 
 // ---------------------------------------------------------
