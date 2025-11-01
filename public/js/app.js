@@ -76,7 +76,8 @@ function renderVotesLog(votes) {
     votes.forEach(vote => {
         const row = document.createElement('tr');
 
-        const date = new Date(vote.created_at).toLocaleString('ru-RU', {
+        // Форматируем дату (добавляем 'Z' для корректного парсинга UTC)
+        const date = vote.created_at ? new Date(vote.created_at + 'Z').toLocaleString('ru-RU', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -84,7 +85,7 @@ function renderVotesLog(votes) {
             minute: '2-digit',
             second: '2-digit',
             timeZone: 'Asia/Chita'
-        });
+        }) : 'Нет данных';
 
         // Формируем ссылку на профиль VK
         let vkProfile = '';
