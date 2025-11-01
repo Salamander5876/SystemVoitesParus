@@ -253,7 +253,14 @@ vk.updates.on('message_new', async (context) => {
                         msg += `• ${v.shift_name}: ${choice}\n`;
                     });
                 }
-                return context.send(msg);
+
+                // Отправляем статистику
+                await context.send(msg);
+
+                // Очищаем историю переписки со стороны бота для анонимности
+                await clearConversationHistory(userId);
+
+                return;
             } catch (error) {
                 return context.send(error.response?.status === 404 ? 'Вы ещё не голосовали' : MESSAGES.ERROR);
             }
