@@ -381,9 +381,30 @@ function renderAuditLog(votes) {
             row.classList.add('vote-cancelled');
         }
 
-        const date = new Date(vote.created_at).toLocaleString('ru-RU', {
-            timeZone: 'Asia/Chita'
-        });
+        // Форматируем дату (SQLite возвращает в формате YYYY-MM-DD HH:MM:SS)
+        let date = 'Нет данных';
+        if (vote.created_at) {
+            try {
+                // Преобразуем SQLite формат в ISO формат для JavaScript
+                const dateStr = vote.created_at.replace(' ', 'T') + 'Z';
+                const dateObj = new Date(dateStr);
+
+                // Проверяем валидность даты
+                if (!isNaN(dateObj.getTime())) {
+                    date = dateObj.toLocaleString('ru-RU', {
+                        timeZone: 'Asia/Chita',
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                }
+            } catch (e) {
+                console.error('Date parsing error:', e, vote.created_at);
+            }
+        }
 
         // Формируем ссылку на профиль VK
         let vkProfile = '';
