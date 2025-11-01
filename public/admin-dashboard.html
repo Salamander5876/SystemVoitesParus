@@ -10,23 +10,44 @@
 <body class="dashboard">
     <header class="dashboard-header">
         <div class="header-content">
-            <h1>Панель управления</h1>
-            <nav class="nav-tabs">
-                <button class="nav-tab active" data-tab="voting-control" onclick="switchTab('voting-control')">
-                    ⚙️ Управление голосованием
+            <div class="header-top">
+                <h1>Панель управления</h1>
+                <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Меню">
+                    <span class="hamburger-icon">☰</span>
                 </button>
-                <button class="nav-tab" data-tab="shifts-candidates" onclick="switchTab('shifts-candidates')">
-                    👥 Смены и кандидаты
-                </button>
-                <button class="nav-tab" data-tab="voters" onclick="switchTab('voters')">
-                    📋 Список избирателей
-                </button>
-                <button class="nav-tab" data-tab="audit-log" onclick="switchTab('audit-log')">
-                    📊 Журнал голосов
-                </button>
-                <button class="nav-tab" data-tab="results" onclick="switchTab('results')">
-                    📈 Итоговая ведомость
-                </button>
+            </div>
+            <nav class="nav-tabs" id="main-nav">
+                <div class="nav-tabs-pages">
+                    <button class="nav-tab active" data-tab="voting-control" onclick="switchTab('voting-control')">
+                        ⚙️ Управление голосованием
+                    </button>
+                    <button class="nav-tab" data-tab="shifts-candidates" onclick="switchTab('shifts-candidates')">
+                        👥 Смены и кандидаты
+                    </button>
+                    <button class="nav-tab" data-tab="voters" onclick="switchTab('voters')">
+                        📋 Список избирателей
+                    </button>
+                    <button class="nav-tab" data-tab="audit-log" onclick="switchTab('audit-log')">
+                        📊 Журнал голосов
+                    </button>
+                    <button class="nav-tab" data-tab="results" onclick="switchTab('results')">
+                        📈 Итоговая ведомость
+                    </button>
+                </div>
+                <div class="nav-tabs-user mobile-only">
+                    <div class="mobile-user-info">
+                        <span class="mobile-username" id="mobile-admin-username">Администратор</span>
+                    </div>
+                    <button class="nav-action-btn" onclick="showChangePasswordModal(); closeMobileMenu();">
+                        🔐 Сменить пароль
+                    </button>
+                    <button class="nav-action-btn btn-reset" onclick="if(confirm('Сбросить базу данных?')) { resetDatabase(); closeMobileMenu(); }">
+                        🗑️ Сбросить БД
+                    </button>
+                    <button class="nav-action-btn btn-logout-mobile" onclick="logout()">
+                        🚪 Выйти
+                    </button>
+                </div>
             </nav>
             <div class="user-info">
                 <span id="admin-username">Администратор</span>

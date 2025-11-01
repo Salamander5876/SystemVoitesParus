@@ -4,8 +4,40 @@ if (!token) {
     window.location.href = '/admin';
 }
 
-const username = localStorage.getItem('admin_username');
-document.getElementById('admin-username').textContent = username || 'Администратор';
+const username = localStorage.getItem('admin_username') || 'Администратор';
+document.getElementById('admin-username').textContent = username;
+
+// Синхронизируем имя пользователя для мобильной версии
+const mobileUsernameEl = document.getElementById('mobile-admin-username');
+if (mobileUsernameEl) {
+    mobileUsernameEl.textContent = username;
+}
+
+// === Mobile Menu Toggle ===
+function toggleMobileMenu() {
+    const nav = document.getElementById('main-nav');
+    const toggle = document.querySelector('.mobile-menu-toggle');
+
+    if (nav.classList.contains('mobile-active')) {
+        nav.classList.remove('mobile-active');
+        toggle.querySelector('.hamburger-icon').textContent = '☰';
+    } else {
+        nav.classList.add('mobile-active');
+        toggle.querySelector('.hamburger-icon').textContent = '✕';
+    }
+}
+
+function closeMobileMenu() {
+    const nav = document.getElementById('main-nav');
+    const toggle = document.querySelector('.mobile-menu-toggle');
+
+    if (nav && nav.classList.contains('mobile-active')) {
+        nav.classList.remove('mobile-active');
+        if (toggle) {
+            toggle.querySelector('.hamburger-icon').textContent = '☰';
+        }
+    }
+}
 
 // === Tab Navigation ===
 function switchTab(tabName) {
@@ -33,6 +65,18 @@ function switchTab(tabName) {
 
     // Сохраняем текущую вкладку
     localStorage.setItem('admin_current_tab', tabName);
+
+    // Закрываем мобильное меню после выбора
+    if (window.innerWidth <= 768) {
+        const nav = document.getElementById('main-nav');
+        const toggle = document.querySelector('.mobile-menu-toggle');
+        if (nav && nav.classList.contains('mobile-active')) {
+            nav.classList.remove('mobile-active');
+            if (toggle) {
+                toggle.querySelector('.hamburger-icon').textContent = '☰';
+            }
+        }
+    }
 
     // Подгружаем данные для вкладки
     loadTabData(tabName);
@@ -1119,3 +1163,62 @@ setInterval(() => {
     const currentTab = localStorage.getItem('admin_current_tab') || 'voting-control';
     loadTabData(currentTab);
 }, 30000);
+
+// Обнаружение прокручиваемых таблиц для индикатора прокрутки
+function checkScrollableTables() {
+    const containers = document.querySelectorAll('.table-container');
+    containers.forEach(container => {
+        const table = container.querySelector('table');
+        if (table && table.scrollWidth > container.clientWidth) {
+            container.classList.add('scrollable');
+        } else {
+            container.classList.remove('scrollable');
+        }
+
+        // Убираем индикатор при прокрутке до конца
+        container.addEventListener('scroll', function() {
+            const isAtEnd = this.scrollLeft >= (this.scrollWidth - this.clientWidth - 10);
+            if (isAtEnd) {
+                this.classList.remove('scrollable');
+            } else if (table && table.scrollWidth > container.clientWidth) {
+                this.classList.add('scrollable');
+            }
+        });
+    });
+}
+
+// Проверяем таблицы при загрузке и изменении размера окна
+window.addEventListener('load', checkScrollableTables);
+window.addEventListener('resize', checkScrollableTables);
+
+// Вызываем проверку после рендеринга таблиц
+const originalRenderShifts = renderShifts;
+const originalRenderCandidates = renderCandidates;
+const originalRenderVoters = renderVoters;
+const originalRenderAuditLog = renderAuditLog;
+const originalRenderResults = renderResults;
+
+renderShifts = function(...args) {
+    originalRenderShifts.apply(this, args);
+    setTimeout(checkScrollableTables, 100);
+};
+
+renderCandidates = function(...args) {
+    originalRenderCandidates.apply(this, args);
+    setTimeout(checkScrollableTables, 100);
+};
+
+renderVoters = function(...args) {
+    originalRenderVoters.apply(this, args);
+    setTimeout(checkScrollableTables, 100);
+};
+
+renderAuditLog = function(...args) {
+    originalRenderAuditLog.apply(this, args);
+    setTimeout(checkScrollableTables, 100);
+};
+
+renderResults = function(...args) {
+    originalRenderResults.apply(this, args);
+    setTimeout(checkScrollableTables, 100);
+};
