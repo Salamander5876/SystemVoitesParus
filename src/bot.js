@@ -5,6 +5,7 @@ process.env.TZ = 'Asia/Chita';
 
 const { VK, Keyboard } = require('vk-io');
 const { QuestionManager } = require('vk-io-question');
+const { Mutex } = require('async-mutex');
 const axios = require('axios');
 const logger = require('./utils/logger');
 const { MESSAGES, BUTTONS, USER_STATES } = require('./config/constants');
@@ -20,6 +21,17 @@ const questionManager = new QuestionManager();
 
 // Хранилище состояний
 const userStates = new Map();
+
+// Мьютексы для каждого пользователя (предотвращение race condition)
+const userLocks = new Map();
+
+// Получить или создать мьютекс для пользователя
+function getUserLock(userId) {
+    if (!userLocks.has(userId)) {
+        userLocks.set(userId, new Mutex());
+    }
+    return userLocks.get(userId);
+}
 
 // API клиент
 const API_URL = `http://localhost:${process.env.PORT || 3000}/api`;
@@ -156,10 +168,21 @@ async function submitVote(vkId, fullName, nickname, shiftId, candidateId, voteTy
         return data;
     } catch (error) {
         logger.error('Error submitting vote:', error);
+
         if (error.response) {
-            return { success: false, error: error.response.data.error };
+            const errorMsg = error.response.data?.error || error.response.data?.message || error.response.statusText || 'Ошибка сервера';
+            logger.error('Server error response:', {
+                status: error.response.status,
+                data: error.response.data,
+                errorMsg
+            });
+            return { success: false, error: errorMsg };
         }
-        return { success: false, error: 'Ошибка сервера' };
+
+        // Сетевая ошибка или другая проблема
+        const errorMsg = error.message || 'Ошибка подключения к серверу';
+        logger.error('Network or other error:', errorMsg);
+        return { success: false, error: errorMsg };
     }
 }
 
@@ -168,10 +191,14 @@ vk.updates.on('message_new', questionManager.middleware);
 
 vk.updates.on('message_new', async (context) => {
     const userId = context.senderId;
-    const text = context.text || '';
-    const state = getUserState(userId);
+    const mutex = getUserLock(userId);
+
+    // Блокировка для этого пользователя (предотвращение race condition)
+    const release = await mutex.acquire();
 
     try {
+        const text = context.text || '';
+        const state = getUserState(userId);
         // ----------------- Команды -----------------
         if (text === '/start' || text === 'Начать') {
             resetUserState(userId);
@@ -515,6 +542,9 @@ vk.updates.on('message_new', async (context) => {
     } catch (error) {
         logger.error('Bot error:', error);
         return context.send('Произошла ошибка. Попробуйте /start');
+    } finally {
+        // Всегда освобождаем блокировку для этого пользователя
+        release();
     }
 });
 

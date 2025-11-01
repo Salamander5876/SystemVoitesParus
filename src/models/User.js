@@ -64,7 +64,7 @@ class User {
             FROM votes v
             LEFT JOIN candidates c ON v.candidate_id = c.id
             JOIN shifts s ON v.shift_id = s.id
-            WHERE v.user_id = ?
+            WHERE v.user_id = ? AND v.is_cancelled = 0
             ORDER BY v.created_at DESC
         `);
         return stmt.all(userId);
@@ -80,7 +80,7 @@ class User {
                 c.id as candidate_id
             FROM votes v
             JOIN candidates c ON v.candidate_id = c.id
-            WHERE v.user_id = ? AND v.shift_id = ?
+            WHERE v.user_id = ? AND v.shift_id = ? AND v.is_cancelled = 0
             ORDER BY v.created_at DESC
         `);
         return stmt.all(userId, shiftId);
@@ -96,12 +96,12 @@ class User {
 
     static getUserStats(userId) {
         const totalVotesStmt = db.prepare(`
-            SELECT COUNT(*) as total FROM votes WHERE user_id = ?
+            SELECT COUNT(*) as total FROM votes WHERE user_id = ? AND is_cancelled = 0
         `);
         const totalVotes = totalVotesStmt.get(userId).total;
 
         const shiftsVotedStmt = db.prepare(`
-            SELECT COUNT(DISTINCT shift_id) as total FROM votes WHERE user_id = ?
+            SELECT COUNT(DISTINCT shift_id) as total FROM votes WHERE user_id = ? AND is_cancelled = 0
         `);
         const shiftsVoted = shiftsVotedStmt.get(userId).total;
 
@@ -110,7 +110,7 @@ class User {
                 vote_type,
                 COUNT(*) as count
             FROM votes
-            WHERE user_id = ?
+            WHERE user_id = ? AND is_cancelled = 0
             GROUP BY vote_type
         `);
         const breakdown = voteBreakdownStmt.all(userId);
