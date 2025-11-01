@@ -519,45 +519,11 @@ vk.updates.on('message_new', async (context) => {
 });
 
 // ---------------------------------------------------------
-// HTTP-сервер для уведомлений от админ-панели
+// Примечание: Bot API сервер на порту 3001 удалён
+// Теперь используется:
+// - Webhook endpoint на основном сервере: /bot/webhook (порт 3000)
+// - Система очереди сообщений (message_queue) для уведомлений
 // ---------------------------------------------------------
-const express = require('express');
-const botApp = express();
-const BOT_PORT = process.env.BOT_API_PORT || 3001;
-
-botApp.use(express.json());
-
-botApp.post('/api/notify-vote-cancelled', async (req, res) => {
-    try {
-        const { vkId, shiftName, reason } = req.body;
-        if (!vkId || !shiftName || !reason) {
-            return res.status(400).json({ error: 'Missing required fields' });
-        }
-
-        await vk.api.messages.send({
-            user_id: vkId,
-            message: `Уведомление об аннулировании голоса\n\n` +
-                `Ваш голос на смене "${shiftName}" был аннулирован администратором.\n\n` +
-                `Причина: ${reason}\n\n` +
-                `Теперь вы можете проголосовать заново. Используйте /start.`,
-            random_id: Math.floor(Math.random() * 1000000)
-        });
-
-        logger.info(`Vote cancellation notification sent to ${vkId} (shift: ${shiftName})`);
-        res.json({ success: true });
-    } catch (error) {
-        logger.error('Error sending cancellation notification:', error);
-        res.status(500).json({ error: 'Failed to send notification' });
-    }
-});
-
-// Примечание: Старый endpoint /api/notify-all-votes-cancelled удалён
-// Теперь используется система очереди сообщений (message_queue)
-
-botApp.listen(BOT_PORT, () => {
-    logger.info(`Bot API server listening on port ${BOT_PORT}`);
-    console.log(`Bot API сервер запущен на порту ${BOT_PORT}`);
-});
 
 // ---------------------------------------------------------
 // Обработчик очереди сообщений (запускается каждую минуту)

@@ -96,8 +96,6 @@ nano .env
 # Node Environment
 NODE_ENV=production
 PORT=3000
-BOT_API_PORT=3001
-BOT_API_URL=http://localhost:3001
 SITE_URL=https://ваш-домен.com
 
 # VK Bot Configuration
@@ -290,7 +288,6 @@ npm run start:bot
 Приложение будет доступно:
 - Веб-интерфейс: http://localhost:3000
 - Админ-панель: http://localhost:3000/admin.html
-- Bot API: http://localhost:3001
 
 ### Доступ к админ-панели
 
@@ -445,8 +442,8 @@ pm2 status
 
 1. Проверьте логи: `pm2 logs voting-system`
 2. Убедитесь, что VK токен действителен
-3. Проверьте настройки Long Poll в VK
-4. Убедитесь, что порт 3001 не заблокирован
+3. Проверьте настройки Callback API в VK (или Long Poll если используете его)
+4. Убедитесь, что порт 3000 доступен
 
 ### Ошибки базы данных
 
