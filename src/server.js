@@ -14,6 +14,7 @@ const { apiLimiter } = require('./middleware/rateLimiter');
 // Routes
 const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/admin');
+const botWebhookRoutes = require('./routes/botWebhook');
 
 const app = express();
 const server = http.createServer(app);
@@ -42,6 +43,7 @@ app.set('io', io);
 // Routes
 app.use('/api', apiRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/bot', botWebhookRoutes); // VK Callback API webhook
 
 // Health check
 app.get('/health', (req, res) => {
