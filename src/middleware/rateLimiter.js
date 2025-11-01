@@ -7,6 +7,19 @@ const apiLimiter = rateLimit({
     message: 'Слишком много запросов с этого IP, попробуйте позже',
     standardHeaders: true,
     legacyHeaders: false,
+    // Используем x-bot-secret как ключ для запросов от бота (не IP)
+    keyGenerator: (req) => {
+        // Если запрос от бота (есть заголовок x-bot-secret), используем его как ключ
+        if (req.headers['x-bot-secret']) {
+            return `bot:${req.headers['x-bot-secret']}`;
+        }
+        // Иначе используем IP (работает с trust proxy)
+        return req.ip;
+    },
+    skip: (req) => {
+        // Отключаем валидацию для запросов от бота
+        return !!req.headers['x-bot-secret'];
+    }
 });
 
 // Строгий limiter для админ логина
@@ -17,15 +30,29 @@ const adminLoginLimiter = rateLimit({
     skipSuccessfulRequests: true,
     standardHeaders: true,
     legacyHeaders: false,
+    keyGenerator: (req) => req.ip
 });
 
-// Limiter для голосования
+// Limiter для голосования - более мягкий для процесса голосования
 const voteLimiter = rateLimit({
     windowMs: 60000, // 1 минута
-    max: 10, // максимум 10 голосов в минуту
-    message: 'Слишком много попыток голосования, подождите минуту',
+    max: 50, // увеличен до 50 запросов (3 смены × ~10 запросов + запас)
+    message: 'Too Many Requests',
     standardHeaders: true,
     legacyHeaders: false,
+    // Используем VK ID из тела запроса вместо IP
+    keyGenerator: (req) => {
+        // Если есть vkId в теле запроса, используем его
+        if (req.body && req.body.vkId) {
+            return `vote:${req.body.vkId}`;
+        }
+        // Иначе IP (с поддержкой trust proxy)
+        return `ip:${req.ip}`;
+    },
+    skip: (req) => {
+        // НЕ пропускаем запросы - всем нужен rate limit
+        return false;
+    }
 });
 
 module.exports = {
