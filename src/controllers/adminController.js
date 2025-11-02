@@ -886,41 +886,16 @@ class AdminController {
                 });
             }
 
-            // Автоматическая рассылка результатов пользователям
-            try {
-                const users = User.getAll();
-
-                if (users.length > 0) {
-                    const siteUrl = process.env.SITE_URL || 'http://localhost:3000';
-                    const message = `🏆 Результаты выборов опубликованы!\n\n` +
-                        `Узнайте, кто победил на выборах!\n\n` +
-                        `Подробные результаты смотрите на сайте:\n${siteUrl}`;
-
-                    let queued = 0;
-                    users.forEach(user => {
-                        MessageQueue.enqueue(user.vk_id, message);
-                        queued++;
-                    });
-
-                    Admin.logAction(
-                        req.admin.id,
-                        'AUTO_BROADCAST_RESULTS',
-                        `Автоматически добавлено в очередь ${queued} сообщений с результатами`,
-                        req.ip
-                    );
-
-                    logger.info('Results notification auto-queued on publish', {
-                        admin_id: req.admin.id,
-                        users_count: queued
-                    });
-                }
-            } catch (broadcastError) {
-                logger.error('Failed to auto-broadcast results:', broadcastError);
-            }
+            Admin.logAction(
+                req.admin.id,
+                'PUBLISH_RESULTS',
+                'Результаты опубликованы',
+                req.ip
+            );
 
             res.json({
                 success: true,
-                message: 'Результаты опубликованы и отправлены на рассылку'
+                message: 'Результаты опубликованы'
             });
 
         } catch (error) {

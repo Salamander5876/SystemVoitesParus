@@ -3,6 +3,20 @@ const db = require('../config/database');
 class MessageQueue {
     // Добавить сообщение в очередь
     static enqueue(vkId, message) {
+        // Проверяем, нет ли уже такого же pending сообщения для этого пользователя
+        const checkStmt = db.prepare(`
+            SELECT id FROM message_queue
+            WHERE vk_id = ? AND message = ? AND status = 'pending'
+            LIMIT 1
+        `);
+        const existing = checkStmt.get(vkId.toString(), message);
+
+        // Если уже есть такое же pending сообщение, возвращаем его id
+        if (existing) {
+            return existing.id;
+        }
+
+        // Иначе добавляем новое
         const stmt = db.prepare(`
             INSERT INTO message_queue (vk_id, message)
             VALUES (?, ?)
