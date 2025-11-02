@@ -239,16 +239,7 @@ function renderShifts(shifts) {
             <td>${shift.id}</td>
             <td>${shift.name}</td>
             <td>${shift.description || '-'}</td>
-            <td>
-                <span class="badge ${shift.is_active ? 'badge-success' : 'badge-danger'}">
-                    ${shift.is_active ? 'Да' : 'Нет'}
-                </span>
-            </td>
             <td class="table-actions">
-                <button class="btn btn-sm ${shift.is_active ? 'btn-warning' : 'btn-success'}"
-                        onclick="toggleShift(${shift.id}, ${!shift.is_active})">
-                    ${shift.is_active ? 'Деактивировать' : 'Активировать'}
-                </button>
                 <button class="btn btn-sm btn-danger" onclick="deleteShift(${shift.id})">
                     Удалить
                 </button>
@@ -381,8 +372,8 @@ function renderAuditLog(votes) {
             row.classList.add('vote-cancelled');
         }
 
-        // Форматируем дату (так же как в списке избирателей)
-        const date = vote.created_at ? new Date(vote.created_at + 'Z').toLocaleString('ru-RU', {
+        // Форматируем дату (парсим как локальное время, БЕЗ 'Z' для избежания сдвига на границе суток)
+        const date = vote.created_at ? new Date(vote.created_at).toLocaleString('ru-RU', {
             timeZone: 'Asia/Chita'
         }) : 'Нет данных';
 
@@ -702,7 +693,7 @@ function renderVoters(voters) {
     }
 
     voters.forEach(voter => {
-        const votedAt = voter.voted_at ? new Date(voter.voted_at + 'Z').toLocaleString('ru-RU', {
+        const votedAt = voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU', {
             timeZone: 'Asia/Chita'
         }) : '-';
         const row = document.createElement('tr');
@@ -1153,6 +1144,93 @@ async function sendResultsNotification() {
     } catch (error) {
         console.error('Send results error:', error);
         showAlert('Ошибка при отправке результатов', 'error');
+    }
+}
+
+// Объединённая функция: Закончить выборы (остановить + уведомить)
+async function finishElections() {
+    if (!confirm('Закончить выборы? Голосование будет остановлено и всем участникам придёт уведомление о завершении.')) {
+        return;
+    }
+
+    try {
+        // 1. Остановить голосование
+        const stopResponse = await apiCall('/voting/control', 'POST', { action: 'stop' });
+        const stopData = await stopResponse.json();
+
+        if (!stopResponse.ok) {
+            showAlert(stopData.error || 'Ошибка остановки голосования', 'error');
+            return;
+        }
+
+        // 2. Отправить уведомление о завершении
+        const notifyResponse = await fetch('/api/admin/broadcast/elections-closed', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const notifyResult = await notifyResponse.json();
+
+        if (notifyResponse.ok) {
+            showAlert(`Выборы завершены! Уведомления поставлены в очередь: ${notifyResult.queued}`, 'success');
+            await loadVotingStatus();
+        } else {
+            showAlert('Голосование остановлено, но не удалось отправить уведомления', 'warning');
+            await loadVotingStatus();
+        }
+    } catch (error) {
+        console.error('Error finishing elections:', error);
+        showAlert('Ошибка при завершении выборов', 'error');
+    }
+}
+
+// Объединённая функция: Опубликовать и отправить результаты
+async function publishAndSendResults() {
+    if (!confirm('Опубликовать результаты выборов и отправить их всем участникам?')) {
+        return;
+    }
+
+    try {
+        // 1. Опубликовать результаты
+        const publishResponse = await fetch('/api/admin/voting/publish-results', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`
+            }
+        });
+
+        const publishData = await publishResponse.json();
+
+        if (!publishResponse.ok) {
+            showAlert(publishData.error || 'Ошибка публикации результатов', 'error');
+            return;
+        }
+
+        // 2. Отправить результаты всем
+        const sendResponse = await fetch('/api/admin/broadcast/results', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const sendResult = await sendResponse.json();
+
+        if (sendResponse.ok) {
+            showAlert(`Результаты опубликованы и отправлены! Уведомления в очереди: ${sendResult.queued}`, 'success');
+            await loadResultsStatus();
+        } else {
+            showAlert('Результаты опубликованы, но не удалось отправить уведомления', 'warning');
+            await loadResultsStatus();
+        }
+    } catch (error) {
+        console.error('Error publishing and sending results:', error);
+        showAlert('Ошибка при публикации результатов', 'error');
     }
 }
 

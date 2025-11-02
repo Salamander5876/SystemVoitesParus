@@ -76,8 +76,8 @@ function renderVotesLog(votes) {
     votes.forEach(vote => {
         const row = document.createElement('tr');
 
-        // Форматируем дату (добавляем 'Z' для корректного парсинга UTC)
-        const date = vote.created_at ? new Date(vote.created_at + 'Z').toLocaleString('ru-RU', {
+        // Форматируем дату (парсим как локальное время, БЕЗ 'Z' для избежания сдвига на границе суток)
+        const date = vote.created_at ? new Date(vote.created_at).toLocaleString('ru-RU', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
