@@ -168,7 +168,6 @@ async function loadStatus() {
         };
 
         document.getElementById('voting-status').textContent = statusMap[data.status] || '-';
-        document.getElementById('total-votes').textContent = data.totalVotes || 0;
         document.getElementById('total-voters').textContent = data.uniqueVoters || 0;
 
         // Загружаем статус публикации результатов
