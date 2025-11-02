@@ -627,11 +627,15 @@ async function processMessageQueue() {
     }
 }
 
-// Запускаем обработчик очереди каждую минуту
-setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
+// Запускаем обработчик очереди только если bot.js запущен как главный модуль
+// (не импортирован из другого файла)
+if (require.main === module) {
+    // Запускаем обработчик очереди каждую минуту
+    setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
 
-// Запускаем первую обработку сразу после старта (через 5 секунд)
-setTimeout(processMessageQueue, 5000);
+    // Запускаем первую обработку сразу после старта (через 5 секунд)
+    setTimeout(processMessageQueue, 5000);
+}
 
 // ---------------------------------------------------------
 // Запуск VK-бота
@@ -639,27 +643,30 @@ setTimeout(processMessageQueue, 5000);
 // Выбор режима работы: 'polling' или 'webhook'
 const BOT_MODE = process.env.BOT_MODE || 'polling';
 
-if (BOT_MODE === 'webhook') {
-    // Webhook mode (Callback API)
-    logger.info('Starting bot in WEBHOOK mode');
-    console.log('VK Бот запущен в режиме WEBHOOK!');
-    console.log(`Ожидание событий на ${process.env.SITE_URL || 'http://localhost:3000'}/bot/webhook`);
-    console.log('Обработчик очереди сообщений запущен (каждую минуту)');
+// Запуск бота только если это главный модуль
+if (require.main === module) {
+    if (BOT_MODE === 'webhook') {
+        // Webhook mode (Callback API)
+        logger.info('Starting bot in WEBHOOK mode');
+        console.log('VK Бот запущен в режиме WEBHOOK!');
+        console.log(`Ожидание событий на ${process.env.SITE_URL || 'http://localhost:3000'}/bot/webhook`);
+        console.log('Обработчик очереди сообщений запущен (каждую минуту)');
 
-    // Webhook будет обрабатываться через Express роут
-    // См. routes/botWebhook.js
-} else {
-    // Polling mode (Long Poll API)
-    vk.updates.start()
-        .then(() => {
-            logger.info('VK Bot started (polling)');
-            console.log('VK Бот запущен в режиме POLLING!');
-            console.log('Обработчик очереди сообщений запущен (каждую минуту)');
-        })
-        .catch((error) => {
-            logger.error('Bot error:', error);
-            console.error('Ошибка:', error.message);
-        });
+        // Webhook будет обрабатываться через Express роут
+        // См. routes/botWebhook.js
+    } else {
+        // Polling mode (Long Poll API)
+        vk.updates.start()
+            .then(() => {
+                logger.info('VK Bot started (polling)');
+                console.log('VK Бот запущен в режиме POLLING!');
+                console.log('Обработчик очереди сообщений запущен (каждую минуту)');
+            })
+            .catch((error) => {
+                logger.error('Bot error:', error);
+                console.error('Ошибка:', error.message);
+            });
+    }
 }
 
 module.exports = vk;
