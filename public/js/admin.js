@@ -693,6 +693,12 @@ function renderVoters(voters) {
 
     voters.forEach(voter => {
         const votedAt = voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
             timeZone: 'Asia/Chita'
         }) : '-';
         const row = document.createElement('tr');
