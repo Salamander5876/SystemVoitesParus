@@ -1324,8 +1324,6 @@ renderResults = function(...args) {
 // ============================================================
 // Таймер обратного отсчёта через Socket.IO
 // ============================================================
-let timerFinishedHandled = false;
-
 function updateAdminTimer(data) {
     const timerSection = document.getElementById('timer-section');
     const countdownDisplay = document.getElementById('countdown-timer');
@@ -1348,59 +1346,14 @@ function updateAdminTimer(data) {
         const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
         countdownDisplay.textContent = timeString;
 
-        // Если время истекло и мы ещё не обработали завершение
-        if (diff <= 0 && !timerFinishedHandled) {
-            timerFinishedHandled = true;
-            handleAutomaticFinish();
-        }
-
-        // Сбрасываем флаг если время ещё не истекло
-        if (diff > 0) {
-            timerFinishedHandled = false;
+        // Если таймер истёк, просто показываем 00:00:00
+        // Автоматическое завершение происходит на сервере в bot.js
+        if (diff <= 0) {
+            countdownDisplay.textContent = '00:00:00';
         }
     } else {
         // Скрываем таймер если выборы не активны
         timerSection.style.display = 'none';
-        timerFinishedHandled = false;
-    }
-}
-
-// Автоматическое завершение выборов когда таймер истёк
-async function handleAutomaticFinish() {
-    console.log('Timer expired, automatically finishing elections...');
-
-    try {
-        // Останавливаем голосование
-        const stopResponse = await apiCall('/voting/control', 'POST', { action: 'stop' });
-        const stopData = await stopResponse.json();
-
-        if (!stopResponse.ok) {
-            console.error('Failed to stop voting:', stopData);
-            showAlert('Ошибка при автоматическом завершении выборов', 'error');
-            return;
-        }
-
-        // Отправляем уведомление о завершении
-        const notifyResponse = await fetch('/api/admin/broadcast/elections-closed', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        const notifyResult = await notifyResponse.json();
-
-        if (notifyResponse.ok) {
-            showAlert(`Выборы автоматически завершены! Уведомления отправлены: ${notifyResult.queued}`, 'success');
-            await loadStatus();
-        } else {
-            showAlert('Голосование завершено, но не удалось отправить уведомления', 'warning');
-            await loadStatus();
-        }
-    } catch (error) {
-        console.error('Error in automatic finish:', error);
-        showAlert('Ошибка при автоматическом завершении выборов', 'error');
     }
 }
 

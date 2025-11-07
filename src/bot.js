@@ -627,15 +627,14 @@ async function processMessageQueue() {
     }
 }
 
-// Запускаем обработчик очереди только если bot.js запущен как главный модуль
-// (не импортирован из другого файла)
-if (require.main === module) {
-    // Запускаем обработчик очереди каждую минуту
-    setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
+// Запускаем обработчик очереди автоматически
+// Запускаем обработчик очереди каждую минуту
+setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
 
-    // Запускаем первую обработку сразу после старта (через 5 секунд)
-    setTimeout(processMessageQueue, 5000);
-}
+// Запускаем первую обработку сразу после старта (через 5 секунд)
+setTimeout(processMessageQueue, 5000);
+
+logger.info('Message queue processor initialized (running every minute)');
 
 // ---------------------------------------------------------
 // Автоматическое завершение выборов по таймеру
@@ -684,14 +683,14 @@ async function checkElectionTimeout() {
     }
 }
 
-// Запускаем проверку таймера только если bot.js запущен как главный модуль
-if (require.main === module) {
-    // Проверяем каждые 10 секунд
-    setInterval(checkElectionTimeout, 10000); // 10000 мс = 10 секунд
+// Запускаем проверку таймера автоматически
+// Проверяем каждые 10 секунд
+setInterval(checkElectionTimeout, 10000); // 10000 мс = 10 секунд
 
-    // Первая проверка через 5 секунд после старта
-    setTimeout(checkElectionTimeout, 5000);
-}
+// Первая проверка через 5 секунд после старта
+setTimeout(checkElectionTimeout, 5000);
+
+logger.info('Auto-finish election timer initialized (checking every 10 seconds)');
 
 // ---------------------------------------------------------
 // Запуск VK-бота
