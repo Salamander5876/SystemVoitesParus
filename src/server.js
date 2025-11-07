@@ -142,17 +142,38 @@ async function checkElectionTimeout() {
 
         // Если время вышло
         if (now >= end) {
-            // Проверяем, не отправляли ли мы уже уведомления
-            const autoFinishSent = Settings.get('auto_finish_notification_sent');
-            if (autoFinishSent === 'true') {
-                // Уведомления уже были отправлены, просто останавливаем голосование
-                Settings.stopVoting();
+            // АТОМАРНАЯ ОПЕРАЦИЯ: Используем транзакцию для проверки и установки флага
+            const db = require('./config/database');
+
+            let shouldSendNotifications = false;
+
+            // Выполняем транзакцию для атомарной проверки и установки флага
+            const transaction = db.transaction(() => {
+                const autoFinishSent = Settings.get('auto_finish_notification_sent');
+
+                if (autoFinishSent === 'true') {
+                    // Уведомления уже были отправлены
+                    return false;
+                }
+
+                // Устанавливаем флаг
+                Settings.set('auto_finish_notification_sent', 'true');
+                return true;
+            });
+
+            try {
+                shouldSendNotifications = transaction();
+            } catch (error) {
+                logger.error('Error in auto-finish transaction:', error);
                 return;
             }
 
-            // ВАЖНО: Сразу устанавливаем флаг ПЕРЕД любыми действиями
-            // чтобы предотвратить race condition если функция вызывается повторно
-            Settings.set('auto_finish_notification_sent', 'true');
+            // Если уведомления уже были отправлены, просто останавливаем голосование
+            if (!shouldSendNotifications) {
+                Settings.stopVoting();
+                logger.info('Auto-finish: Notifications already sent, just stopping voting');
+                return;
+            }
 
             logger.info(`Election time expired, automatically finishing elections [PID: ${process.pid}]`);
 

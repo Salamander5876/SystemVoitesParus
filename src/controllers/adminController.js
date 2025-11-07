@@ -67,9 +67,6 @@ class AdminController {
                     break;
                 case 'stop':
                     Settings.stopVoting();
-                    // Устанавливаем флаг, чтобы предотвратить автоматическую отправку уведомлений
-                    // Уведомления будут отправлены отдельным запросом через finishElections()
-                    Settings.set('auto_finish_notification_sent', 'true');
                     message = 'Голосование остановлено';
                     break;
                 case 'pause':
