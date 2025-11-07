@@ -706,9 +706,22 @@ function renderVoters(voters) {
     }
 
     voters.forEach(voter => {
-        const votedAt = voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU', {
-            timeZone: 'Asia/Chita'
-        }) : '-';
+        let votedAt = '-';
+        if (voter.voted_at) {
+            // Парсим дату как UTC и добавляем 9 часов для Asia/Chita (UTC+9)
+            const date = new Date(voter.voted_at);
+            const utcTime = date.getTime();
+            const chitaTime = new Date(utcTime + (9 * 60 * 60 * 1000));
+
+            votedAt = chitaTime.toLocaleString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${voter.id}</td>
