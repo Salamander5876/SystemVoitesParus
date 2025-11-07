@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS message_queue (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vk_id TEXT NOT NULL,
     message TEXT NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'failed')),
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'processing', 'sent', 'failed')),
     attempts INTEGER DEFAULT 0,
     max_attempts INTEGER DEFAULT 3,
     error_message TEXT,
