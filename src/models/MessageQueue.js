@@ -1,21 +1,39 @@
 const db = require('../config/database');
+const logger = require('../utils/logger');
 
 class MessageQueue {
     // Добавить сообщение в очередь
     static enqueue(vkId, message) {
         // Используем транзакцию для атомарной операции проверки и вставки
         const transaction = db.transaction(() => {
-            // Проверяем, нет ли уже такого же pending сообщения для этого пользователя
-            const checkStmt = db.prepare(`
-                SELECT id FROM message_queue
+            // Проверяем, нет ли уже такого же pending или недавно отправленного сообщения
+            // Проверяем pending сообщения
+            const checkPendingStmt = db.prepare(`
+                SELECT id, created_at FROM message_queue
                 WHERE vk_id = ? AND message = ? AND status = 'pending'
                 LIMIT 1
             `);
-            const existing = checkStmt.get(vkId.toString(), message);
+            const existingPending = checkPendingStmt.get(vkId.toString(), message);
 
-            // Если уже есть такое же pending сообщение, возвращаем его id
-            if (existing) {
-                return existing.id;
+            if (existingPending) {
+                logger.info(`[QUEUE-ENQUEUE] Skipping duplicate pending message for user ${vkId}, existing id: ${existingPending.id}`);
+                return existingPending.id;
+            }
+
+            // Проверяем недавно отправленные сообщения (за последние 5 минут)
+            const checkRecentStmt = db.prepare(`
+                SELECT id, sent_at FROM message_queue
+                WHERE vk_id = ?
+                  AND message = ?
+                  AND status = 'sent'
+                  AND datetime(sent_at) > datetime('now', '-5 minutes')
+                LIMIT 1
+            `);
+            const existingRecent = checkRecentStmt.get(vkId.toString(), message);
+
+            if (existingRecent) {
+                logger.info(`[QUEUE-ENQUEUE] Skipping duplicate - same message was sent recently (${existingRecent.sent_at}) to user ${vkId}`);
+                return null; // Возвращаем null, чтобы показать, что сообщение не добавлено
             }
 
             // Иначе добавляем новое
@@ -24,6 +42,7 @@ class MessageQueue {
                 VALUES (?, ?)
             `);
             const result = stmt.run(vkId.toString(), message);
+            logger.info(`[QUEUE-ENQUEUE] Added new message to queue, id: ${result.lastInsertRowid}, user: ${vkId}`);
             return result.lastInsertRowid;
         });
 
