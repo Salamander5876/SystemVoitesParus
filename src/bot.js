@@ -606,6 +606,8 @@ async function processMessageQueue() {
                         error: sendError.message
                     });
                 } else {
+                    // Возвращаем сообщение в pending для повторной попытки
+                    MessageQueue.resetToPending(msg.id);
                     logger.warn(`Message send failed, will retry`, {
                         message_id: msg.id,
                         vk_id: msg.vk_id,

@@ -49,16 +49,37 @@ class MessageQueue {
         return transaction();
     }
 
-    // Получить все ожидающие отправки сообщения
+    // Получить все ожидающие отправки сообщения и атомарно пометить их как 'processing'
     static getPending(limit = 100) {
-        const stmt = db.prepare(`
-            SELECT * FROM message_queue
-            WHERE status = 'pending'
-            AND attempts < max_attempts
-            ORDER BY created_at ASC
-            LIMIT ?
-        `);
-        return stmt.all(Math.floor(limit));
+        const transaction = db.transaction(() => {
+            // Сначала получаем pending сообщения
+            const selectStmt = db.prepare(`
+                SELECT * FROM message_queue
+                WHERE status = 'pending'
+                AND attempts < max_attempts
+                ORDER BY created_at ASC
+                LIMIT ?
+            `);
+            const messages = selectStmt.all(Math.floor(limit));
+
+            // Если есть сообщения, помечаем их как 'processing' атомарно
+            if (messages.length > 0) {
+                const ids = messages.map(m => m.id);
+                const placeholders = ids.map(() => '?').join(',');
+                const updateStmt = db.prepare(`
+                    UPDATE message_queue
+                    SET status = 'processing'
+                    WHERE id IN (${placeholders})
+                `);
+                updateStmt.run(...ids);
+
+                logger.info(`[QUEUE-GET] Marked ${messages.length} messages as processing: [${ids.join(', ')}]`);
+            }
+
+            return messages;
+        });
+
+        return transaction();
     }
 
     // Отметить сообщение как отправленное
@@ -83,6 +104,17 @@ class MessageQueue {
             WHERE id = ?
         `);
         const result = stmt.run(errorMessage, id);
+        return result.changes > 0;
+    }
+
+    // Вернуть сообщение обратно в pending (если обработка не удалась)
+    static resetToPending(id) {
+        const stmt = db.prepare(`
+            UPDATE message_queue
+            SET status = 'pending'
+            WHERE id = ? AND status = 'processing'
+        `);
+        const result = stmt.run(id);
         return result.changes > 0;
     }
 
