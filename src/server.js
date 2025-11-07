@@ -150,13 +150,14 @@ async function checkElectionTimeout() {
                 return;
             }
 
-            logger.info('Election time expired, automatically finishing elections');
+            // ВАЖНО: Сразу устанавливаем флаг ПЕРЕД любыми действиями
+            // чтобы предотвратить race condition если функция вызывается повторно
+            Settings.set('auto_finish_notification_sent', 'true');
+
+            logger.info(`Election time expired, automatically finishing elections [PID: ${process.pid}]`);
 
             // Останавливаем голосование
             Settings.stopVoting();
-
-            // Отмечаем что уведомления отправляются
-            Settings.set('auto_finish_notification_sent', 'true');
 
             // Получаем всех пользователей для рассылки
             const User = require('./models/User');
