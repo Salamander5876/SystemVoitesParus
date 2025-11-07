@@ -123,6 +123,69 @@ function broadcastTimerUpdate() {
 // Отправляем обновления таймера каждые 2 секунды
 setInterval(broadcastTimerUpdate, 1000);
 
+// ---------------------------------------------------------
+// Автоматическое завершение выборов по таймеру
+// ---------------------------------------------------------
+async function checkElectionTimeout() {
+    try {
+        const Settings = require('./models/Settings');
+        const status = Settings.getVotingStatus();
+        const endTime = Settings.getEndTime();
+
+        // Проверяем только если выборы активны и есть время окончания
+        if (status !== 'active' || !endTime) {
+            return;
+        }
+
+        const now = new Date();
+        const end = new Date(endTime);
+
+        // Если время вышло
+        if (now >= end) {
+            logger.info('Election time expired, automatically finishing elections');
+
+            // Останавливаем голосование
+            Settings.stopVoting();
+
+            // Получаем всех пользователей для рассылки
+            const User = require('./models/User');
+            const MessageQueue = require('./models/MessageQueue');
+            const users = User.getAll();
+
+            if (users.length > 0) {
+                const message = '🗳 Выборы завершились!\n\nСпасибо за участие. Результаты будут опубликованы в ближайшее время. Вы получите уведомление, когда результаты будут доступны.';
+
+                users.forEach(user => {
+                    MessageQueue.enqueue(user.vk_id, message);
+                });
+
+                logger.info(`Auto-finish: Elections closed notification queued for ${users.length} users`);
+            }
+
+            // Логируем автоматическое завершение
+            const Admin = require('./models/Admin');
+            Admin.logAction(1, 'AUTO_FINISH_ELECTIONS', 'Выборы автоматически завершены по таймеру', 'system');
+
+            // Отправляем обновление всем клиентам через Socket.IO
+            io.emit('voting_status_changed', {
+                status: 'finished',
+                message: 'Выборы автоматически завершены'
+            });
+        }
+
+    } catch (error) {
+        logger.error('Error checking election timeout:', error);
+    }
+}
+
+// Проверяем таймер каждые 10 секунд
+setInterval(checkElectionTimeout, 10000);
+
+// Первая проверка через 5 секунд после старта
+setTimeout(checkElectionTimeout, 5000);
+
+logger.info('Auto-finish election timer initialized (checking every 10 seconds)');
+
 // Запуск сервера
 server.listen(PORT, () => {
     logger.info(`Server running on port ${PORT}`);
