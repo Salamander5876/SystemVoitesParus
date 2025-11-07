@@ -812,3 +812,69 @@ body::after {
         font-size: 1.1em;
     }
 }
+
+/* ============================================================
+   Таймер обратного отсчёта на главной странице
+   ============================================================ */
+.public-timer {
+    margin-top: 20px;
+}
+
+.timer-header {
+    
+    padding: 15px;
+    text-align: center;
+    border-radius: 8px 8px 0 0;
+}
+
+.timer-header h3 {
+    color: white;
+    margin: 0;
+    font-size: 1.2em;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.timer-countdown {
+    font-size: 5em;
+    font-weight: 800;
+    text-align: center;
+    color: var(--primary-red);
+    font-family: 'Courier New', Courier, monospace;
+    letter-spacing: 8px;
+    padding: 30px 20px;
+    background: white;
+    border-radius: 0 0 8px 8px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Мобильная адаптация для таймера */
+@media (max-width: 768px) {
+    .timer-header h3 {
+        font-size: 0.9em;
+        letter-spacing: 0.5px;
+    }
+
+    .timer-countdown {
+        font-size: 2.5em;
+        letter-spacing: 4px;
+        padding: 20px 10px;
+    }
+}
+
+@media (max-width: 480px) {
+    .timer-header {
+        padding: 12px;
+    }
+
+    .timer-header h3 {
+        font-size: 0.8em;
+    }
+
+    .timer-countdown {
+        font-size: 2em;
+        letter-spacing: 2px;
+        padding: 15px 8px;
+    }
+}

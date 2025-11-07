@@ -89,11 +89,48 @@ io.on('connection', (socket) => {
 // Error handler (должен быть последним)
 app.use(errorHandler);
 
+// Функция для отправки обновлений таймера, статуса и статистики через Socket.IO
+function broadcastTimerUpdate() {
+    const Settings = require('./models/Settings');
+    const Vote = require('./models/Vote');
+    const status = Settings.getVotingStatus();
+    const endTime = Settings.getEndTime();
+
+    // Получаем количество уникальных проголосовавших
+    const uniqueVoters = Vote.getUniqueVotersCount();
+
+    if (status === 'active' && endTime) {
+        const now = new Date();
+        const end = new Date(endTime);
+        const diff = end - now;
+
+        io.emit('timer_update', {
+            endTime: endTime,
+            timeLeft: Math.max(0, diff),
+            status: status,
+            uniqueVoters: uniqueVoters
+        });
+    } else {
+        io.emit('timer_update', {
+            endTime: null,
+            timeLeft: 0,
+            status: status,
+            uniqueVoters: uniqueVoters
+        });
+    }
+}
+
+// Отправляем обновления таймера каждые 2 секунды
+setInterval(broadcastTimerUpdate, 1000);
+
 // Запуск сервера
 server.listen(PORT, () => {
     logger.info(`Server running on port ${PORT}`);
     logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`WebSocket server ready`);
+
+    // Отправляем первое обновление таймера через 1 секунду после старта
+    setTimeout(broadcastTimerUpdate, 1000);
 });
 
 // Graceful shutdown

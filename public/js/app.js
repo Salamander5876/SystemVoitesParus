@@ -259,5 +259,70 @@ async function downloadResults() {
     }
 }
 
+// ============================================================
+// Таймер обратного отсчёта на главной странице через Socket.IO
+// ============================================================
+function updatePublicTimer(data) {
+    const timerSection = document.getElementById('public-timer-section');
+    const countdownDisplay = document.getElementById('public-countdown-timer');
+
+    if (!timerSection || !countdownDisplay) return;
+
+    // Если выборы активны и есть время окончания
+    if (data.status === 'active' && data.endTime) {
+        timerSection.style.display = 'block';
+
+        const endTime = new Date(data.endTime);
+        const now = new Date();
+        const diff = Math.max(0, endTime - now);
+
+        if (diff <= 0) {
+            countdownDisplay.textContent = '00:00:00';
+            // Обновляем статус после завершения
+            setTimeout(() => {
+                loadStatus();
+                loadVotesLog();
+            }, 2000);
+            return;
+        }
+
+        // Вычисляем часы, минуты, секунды
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        countdownDisplay.textContent = timeString;
+    } else {
+        // Скрываем таймер если выборы не активны
+        timerSection.style.display = 'none';
+    }
+}
+
 // Запуск при загрузке страницы
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', () => {
+    init();
+
+    // Подключаемся к Socket.IO для получения обновлений таймера, статистики и статуса
+    socket.on('timer_update', (data) => {
+        updatePublicTimer(data);
+
+        // Обновляем статус голосования
+        const statusElement = document.getElementById('voting-status');
+        if (statusElement) {
+            const statusMap = {
+                'not_started': '⏸ Голосование не начато',
+                'active': 'Голосование активно',
+                'paused': '⏸ Голосование приостановлено',
+                'finished': 'Голосование завершено'
+            };
+            statusElement.textContent = statusMap[data.status] || data.status;
+        }
+
+        // Обновляем количество проголосовавших
+        const votersCountElement = document.getElementById('unique-voters');
+        if (votersCountElement && data.uniqueVoters !== undefined) {
+            votersCountElement.textContent = data.uniqueVoters;
+        }
+    });
+});

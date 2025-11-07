@@ -1,3 +1,6 @@
+// Инициализация Socket.IO
+const socket = io();
+
 // Проверка авторизации
 const token = localStorage.getItem('admin_token');
 if (!token) {
@@ -191,12 +194,23 @@ async function controlVoting(action) {
     }
 
     try {
-        const response = await apiCall('/voting/control', 'POST', { action });
+        const body = { action };
+
+        // При старте передаём время окончания
+        if (action === 'start') {
+            const durationMinutes = parseInt(document.getElementById('voting-duration').value) || 60;
+            const endTime = new Date(Date.now() + durationMinutes * 60 * 1000).toISOString();
+            body.startTime = new Date().toISOString();
+            body.endTime = endTime;
+        }
+
+        const response = await apiCall('/voting/control', 'POST', body);
         const data = await response.json();
 
         if (response.ok) {
             showAlert(data.message, 'success');
             await loadStatus();
+            // Таймер автоматически обновится через Socket.IO
         } else {
             showAlert(data.error || 'Ошибка', 'error');
         }
@@ -1306,3 +1320,109 @@ renderResults = function(...args) {
     originalRenderResults.apply(this, args);
     setTimeout(checkScrollableTables, 100);
 };
+
+// ============================================================
+// Таймер обратного отсчёта через Socket.IO
+// ============================================================
+let timerFinishedHandled = false;
+
+function updateAdminTimer(data) {
+    const timerSection = document.getElementById('timer-section');
+    const countdownDisplay = document.getElementById('countdown-timer');
+
+    if (!timerSection || !countdownDisplay) return;
+
+    // Если выборы активны и есть время окончания
+    if (data.status === 'active' && data.endTime) {
+        timerSection.style.display = 'block';
+
+        const endTime = new Date(data.endTime);
+        const now = new Date();
+        const diff = Math.max(0, endTime - now);
+
+        // Вычисляем часы, минуты, секунды
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        countdownDisplay.textContent = timeString;
+
+        // Если время истекло и мы ещё не обработали завершение
+        if (diff <= 0 && !timerFinishedHandled) {
+            timerFinishedHandled = true;
+            handleAutomaticFinish();
+        }
+
+        // Сбрасываем флаг если время ещё не истекло
+        if (diff > 0) {
+            timerFinishedHandled = false;
+        }
+    } else {
+        // Скрываем таймер если выборы не активны
+        timerSection.style.display = 'none';
+        timerFinishedHandled = false;
+    }
+}
+
+// Автоматическое завершение выборов когда таймер истёк
+async function handleAutomaticFinish() {
+    console.log('Timer expired, automatically finishing elections...');
+
+    try {
+        // Останавливаем голосование
+        const stopResponse = await apiCall('/voting/control', 'POST', { action: 'stop' });
+        const stopData = await stopResponse.json();
+
+        if (!stopResponse.ok) {
+            console.error('Failed to stop voting:', stopData);
+            showAlert('Ошибка при автоматическом завершении выборов', 'error');
+            return;
+        }
+
+        // Отправляем уведомление о завершении
+        const notifyResponse = await fetch('/api/admin/broadcast/elections-closed', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('admin_token')}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const notifyResult = await notifyResponse.json();
+
+        if (notifyResponse.ok) {
+            showAlert(`Выборы автоматически завершены! Уведомления отправлены: ${notifyResult.queued}`, 'success');
+            await loadStatus();
+        } else {
+            showAlert('Голосование завершено, но не удалось отправить уведомления', 'warning');
+            await loadStatus();
+        }
+    } catch (error) {
+        console.error('Error in automatic finish:', error);
+        showAlert('Ошибка при автоматическом завершении выборов', 'error');
+    }
+}
+
+// Подключаемся к Socket.IO для получения обновлений таймера, статистики и статуса
+socket.on('timer_update', (data) => {
+    updateAdminTimer(data);
+
+    // Обновляем статус голосования
+    const statusElement = document.getElementById('voting-status');
+    if (statusElement) {
+        const statusMap = {
+            'not_started': '⏸ Не начато',
+            'active': 'Голосование активно',
+            'paused': '⏸ Приостановлено',
+            'finished': 'Завершено'
+        };
+        statusElement.textContent = statusMap[data.status] || data.status;
+    }
+
+    // Обновляем количество проголосовавших
+    const votersCountElement = document.getElementById('unique-voters-count');
+    if (votersCountElement && data.uniqueVoters !== undefined) {
+        votersCountElement.textContent = data.uniqueVoters;
+    }
+});

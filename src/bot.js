@@ -638,6 +638,62 @@ if (require.main === module) {
 }
 
 // ---------------------------------------------------------
+// Автоматическое завершение выборов по таймеру
+// ---------------------------------------------------------
+async function checkElectionTimeout() {
+    try {
+        const status = Settings.getVotingStatus();
+        const endTime = Settings.getEndTime();
+
+        // Проверяем только если выборы активны и есть время окончания
+        if (status !== 'active' || !endTime) {
+            return;
+        }
+
+        const now = new Date();
+        const end = new Date(endTime);
+
+        // Если время вышло
+        if (now >= end) {
+            logger.info('Election time expired, automatically finishing elections');
+
+            // Останавливаем голосование
+            Settings.stopVoting();
+
+            // Получаем всех пользователей для рассылки
+            const User = require('./models/User');
+            const users = User.getAll();
+
+            if (users.length > 0) {
+                const message = '🗳 Выборы завершились!\n\nСпасибо за участие. Результаты будут опубликованы в ближайшее время. Вы получите уведомление, когда результаты будут доступны.';
+
+                users.forEach(user => {
+                    MessageQueue.enqueue(user.vk_id, message);
+                });
+
+                logger.info(`Auto-finish: Elections closed notification queued for ${users.length} users`);
+            }
+
+            // Логируем автоматическое завершение
+            const Admin = require('./models/Admin');
+            Admin.logAction(1, 'AUTO_FINISH_ELECTIONS', 'Выборы автоматически завершены по таймеру', 'system');
+        }
+
+    } catch (error) {
+        logger.error('Error checking election timeout:', error);
+    }
+}
+
+// Запускаем проверку таймера только если bot.js запущен как главный модуль
+if (require.main === module) {
+    // Проверяем каждые 10 секунд
+    setInterval(checkElectionTimeout, 10000); // 10000 мс = 10 секунд
+
+    // Первая проверка через 5 секунд после старта
+    setTimeout(checkElectionTimeout, 5000);
+}
+
+// ---------------------------------------------------------
 // Запуск VK-бота
 // ---------------------------------------------------------
 // Выбор режима работы: 'polling' или 'webhook'
