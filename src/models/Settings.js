@@ -66,6 +66,8 @@ class Settings {
         this.setVotingStatus('active');
         if (startTime) this.setStartTime(startTime);
         if (endTime) this.setEndTime(endTime);
+        // Сбрасываем флаг автоматического завершения при запуске новых выборов
+        this.delete('auto_finish_notification_sent');
     }
 
     static stopVoting() {
@@ -80,6 +82,7 @@ class Settings {
         this.setVotingStatus('not_started');
         this.delete('start_time');
         this.delete('end_time');
+        this.delete('auto_finish_notification_sent');
     }
 
     // Методы для публикации результатов

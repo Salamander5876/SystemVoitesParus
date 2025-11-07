@@ -142,10 +142,21 @@ async function checkElectionTimeout() {
 
         // Если время вышло
         if (now >= end) {
+            // Проверяем, не отправляли ли мы уже уведомления
+            const autoFinishSent = Settings.get('auto_finish_notification_sent');
+            if (autoFinishSent === 'true') {
+                // Уведомления уже были отправлены, просто останавливаем голосование
+                Settings.stopVoting();
+                return;
+            }
+
             logger.info('Election time expired, automatically finishing elections');
 
             // Останавливаем голосование
             Settings.stopVoting();
+
+            // Отмечаем что уведомления отправляются
+            Settings.set('auto_finish_notification_sent', 'true');
 
             // Получаем всех пользователей для рассылки
             const User = require('./models/User');
