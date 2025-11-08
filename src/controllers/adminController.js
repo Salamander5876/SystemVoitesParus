@@ -608,11 +608,27 @@ class AdminController {
 
             // Данные
             voters.forEach(voter => {
+                // Конвертация времени в UTC+9 (Asia/Chita)
+                let votedAtFormatted = '-';
+                if (voter.voted_at) {
+                    const date = new Date(voter.voted_at);
+                    const utcTime = date.getTime();
+                    const chitaTime = new Date(utcTime + (9 * 60 * 60 * 1000));
+                    votedAtFormatted = chitaTime.toLocaleString('ru-RU', {
+                        day: '2-digit',
+                        month: '2-digit',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        second: '2-digit'
+                    });
+                }
+
                 const row = [
                     voter.id,
                     voter.full_name,
                     voter.has_voted ? 'Да' : 'Нет',
-                    voter.voted_at ? new Date(voter.voted_at).toLocaleString('ru-RU') : '-'
+                    votedAtFormatted
                 ];
                 data.push(row);
             });
