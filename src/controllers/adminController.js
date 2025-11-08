@@ -456,6 +456,35 @@ class AdminController {
                         `${percentage}%`
                     ]);
                 });
+
+                // Добавляем статистику по специальным вариантам голосования
+                resultsData.push(['']); // Пустая строка для разделения
+
+                // Находим "Против всех" и "Воздержался" из shiftStats.candidates
+                const againstAll = shiftStats.candidates.find(c => c.name === 'Против всех');
+                const abstain = shiftStats.candidates.find(c => c.name === 'Воздержался');
+
+                if (againstAll) {
+                    const percentage = shiftStats.stats.total_votes > 0
+                        ? ((againstAll.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
+                        : 0;
+                    resultsData.push([
+                        'Против всех',
+                        againstAll.vote_count,
+                        `${percentage}%`
+                    ]);
+                }
+
+                if (abstain) {
+                    const percentage = shiftStats.stats.total_votes > 0
+                        ? ((abstain.vote_count / shiftStats.stats.total_votes) * 100).toFixed(1)
+                        : 0;
+                    resultsData.push([
+                        'Воздержался',
+                        abstain.vote_count,
+                        `${percentage}%`
+                    ]);
+                }
             });
 
             // Создаем лист Итоги
