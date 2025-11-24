@@ -390,15 +390,9 @@ function renderAuditLog(votes) {
             timeZone: 'Asia/Chita'
         }) : 'Нет данных';
 
-        // Формируем ссылку на профиль VK
-        let vkProfile = '';
-        if (vote.vk_first_name && vote.vk_last_name) {
-            const vkName = `${vote.vk_first_name} ${vote.vk_last_name}`;
-            const vkLink = `https://vk.com/id${vote.vk_id}`;
-            vkProfile = `<a href="${vkLink}" target="_blank" rel="noopener noreferrer">${vkName}</a>`;
-        } else {
-            vkProfile = '<span style="color: #999;">—</span>';
-        }
+        // Формируем ссылку на профиль VK (показываем только VK ID)
+        const vkLink = `https://vk.com/id${vote.vk_id}`;
+        const vkProfile = `<a href="${vkLink}" target="_blank" rel="noopener noreferrer">id${vote.vk_id}</a>`;
 
         let statusHTML = '';
         if (vote.is_cancelled) {
