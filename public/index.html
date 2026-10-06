@@ -5,88 +5,139 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Выборы старшего вожатого</title>
     <link rel="stylesheet" href="/css/style.css">
+    <script>
+        // Применяем тему до отрисовки (без мигания)
+        (function () {
+            try {
+                var t = localStorage.getItem('parus-theme') || 'light';
+                document.documentElement.setAttribute('data-theme', t);
+            } catch (e) {}
+        })();
+    </script>
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <link rel="icon" href="ico.png" type="image/png">
 </head>
 <body>
-    <div class="container">
-        <header class="header">
-            <h1>Выборы старшего вожатого</h1>
-            <h2>Лагерь "Парус" 2026</h2>
-            <div class="status-bar">
-                <div id="voting-status" class="status">Загрузка...</div>
-            </div>
+    <!-- Фоновый канвас: поднимающиеся угольки (тёмная тема) -->
+    <canvas id="ember-bg" aria-hidden="true"></canvas>
+    <!-- Канвас для искр при новом голосе -->
+    <canvas id="ember-canvas" aria-hidden="true"></canvas>
+    <!-- Слой всплывашек «+1 голос» -->
+    <div id="fx-layer" aria-hidden="true"></div>
 
-            <!-- Таймер обратного отсчёта -->
-            <div id="public-timer-section" class="public-timer" style="display: none;">
-                <div class="timer-header">
-                    <h3>До окончания выборов осталось</h3>
+    <div class="container">
+        <!-- Верхняя панель -->
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C12 2 7 6 7 12a5 5 0 0 0 10 0c0-2-1-3.5-1-3.5S15 10 14 10c1-3-2-8-2-8z"/><path class="mi" d="M12 9c0 0-2.5 2-2.5 4.2a2.5 2.5 0 0 0 5 0C14.5 11 12 9 12 9z"/></svg>
+                </span>
+                <div class="brand-text">
+                    <b>Парус</b>
+                    <small>Выборы · 2027</small>
                 </div>
-                <div id="public-countdown-timer" class="timer-countdown">
-                    --:--:--
-                </div>
+            </div>
+            <div class="topbar-right">
+                <span class="live-badge"><span class="live-dot"></span>LIVE</span>
+                <div id="voting-status" class="status">Загрузка…</div>
+                <button id="theme-toggle" class="theme-toggle" onclick="toggleTheme()" aria-label="Сменить тему" title="Светлая / тёмная тема">
+                    <svg class="ic-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><g class="rays"><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/></g></svg>
+                    <svg class="ic-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+                </button>
             </div>
         </header>
 
-        <!-- Секция скачивания итоговой ведомости (показывается после публикации результатов) -->
-        <section id="download-section" class="download-section" style="display: none;">
-            <div class="download-card">
-                <div class="download-icon"></div>
-                
-                <p>Результаты опубликованы! Вы можете скачать полную итоговую ведомость голосования.</p>
-                <button class="btn-download" onclick="downloadResults()">
-                    <span class="btn-icon"></span>
-                    Скачать ведомость (Excel)
-                </button>
-            </div>
+        <!-- Заголовок -->
+        <section class="hero">
+            <h1 class="hero-title">Выборы старшего вожатого</h1>
+            
         </section>
 
-        <main class="main-content">
-            <!-- Секция результатов выборов (показывается когда опубликованы) -->
-            <section id="results-section" class="results-section" style="display: none;">
-                <h2 class="results-title">Результаты выборов</h2>
-                <div id="results-container"></div>
-            </section>
+        <!-- Рабочая зона: результаты слева, лента+сводка справа (в одном экране) -->
+        <div class="workspace" id="workspace">
+        <!-- Результаты (плитка, когда опубликованы) -->
+        <section id="results-section" class="results-section" style="display: none;">
+            <h2 class="results-title">Результаты выборов</h2>
+            <div id="results-container"></div>
+        </section>
 
-            <!-- Стандартная секция статистики -->
-            <section class="stats-section">
-                <div class="stats-grid">
-                    <div class="stat-card">
-                        <div class="stat-label">Проголосовало участников</div>
-                        <div id="unique-voters" class="stat-value">0</div>
+        <!-- Дашборд: лента + сводка -->
+        <div class="dashboard-grid">
+            <main class="col-main">
+                <section class="votes-log-section panel">
+                    <div class="section-head">
+                        <h3>Лента голосования</h3>
+                        
                     </div>
-                </div>
-            </section>
+                    <p class="section-sub">Каждый участник, отдавший голос, появляется здесь в реальном времени.</p>
+                    <div class="table-container">
+                        <table id="votes-log-table" class="votes-log-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 44px;">№</th>
+                                    <th style="width: 120px;">Время</th>
+                                    <th>Избиратель</th>
+                                    <th style="width: 120px;">Статус</th>
+                                </tr>
+                            </thead>
+                            <tbody id="votes-log-body">
+                                <tr><td colspan="4" style="text-align: center; padding: 30px;">Загрузка…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </main>
 
-            <section class="votes-log-section">
-                <h3>Журнал голосования</h3>
-                <p style="color: #666; margin-bottom: 15px; font-size: 14px;">
-                    Здесь отображаются все участники, которые проголосовали.
-                </p>
-                <div class="table-container">
-                    <table id="votes-log-table" class="votes-log-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 50px;">ID</th>
-                                <th style="width: 150px;">Дата и время</th>
-                                <th style="width: 250px;">ФИО (анкета)</th>
-                                <th style="width: 200px;">Профиль ВК</th>
-                                <th style="width: 120px;">Статус</th>
-                            </tr>
-                        </thead>
-                        <tbody id="votes-log-body">
-                            <tr>
-                                <td colspan="5" style="text-align: center; padding: 30px;">Загрузка...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <aside class="col-aside">
+                <!-- Счётчик проголосовавших -->
+                <div class="kpi-card panel" id="live-counter">
+                    <div class="kpi-num" id="unique-voters">0</div>
+                    <div class="kpi-label">проголосовало участников</div>
                 </div>
-            </section>
-        </main>
+
+                <!-- Явка от списка избирателей (в процентах) -->
+                <div class="turnout-card panel" id="turnout-card">
+                    <div class="turnout-head">
+                        <span class="turnout-num" id="turnout-percent">—</span>
+                        <span class="turnout-label">явка от списка<br>избирателей</span>
+                    </div>
+                    <div class="turnout-bar"><span id="turnout-bar-fill"></span></div>
+                    <div class="turnout-sub" id="turnout-sub"></div>
+                </div>
+
+                <!-- Таймер -->
+                <div id="public-timer-section" class="timer-card panel" style="display: none;">
+                    <div class="timer-header"><h3>До окончания выборов</h3></div>
+                    <div id="public-countdown-timer" class="timer-countdown">--:--:--</div>
+                </div>
+
+                <!-- Проверка своего голоса по псевдониму -->
+                <div class="verify-card panel" id="verify-card">
+                    <h4 class="verify-title">Проверить мой голос</h4>
+                    <p class="verify-sub">Введите псевдоним, который вам выдал бот — убедитесь, что ваши голоса учтены.</p>
+                    <form class="verify-form" onsubmit="verifyMyVote(event)">
+                        <input type="text" id="verify-input" class="verify-input"
+                               placeholder="Например: Лунный Страж"
+                               maxlength="60" autocomplete="off">
+                        <button type="submit" class="verify-btn" id="verify-btn">Проверить</button>
+                    </form>
+                    <div id="verify-result" class="verify-result" aria-live="polite"></div>
+                </div>
+
+                <!-- Скачивание ведомости -->
+                <section id="download-section" class="download-section" style="display: none;">
+                    <div class="download-card panel">
+                        <p>Результаты опубликованы! Скачайте полную итоговую ведомость.</p>
+                        <button class="btn-download" onclick="downloadResults()">Скачать ведомость (Excel)</button>
+                    </div>
+                </section>
+            </aside>
+        </div>
+        </div><!-- /.workspace -->
 
         <footer class="footer">
-            <p>&copy; 2026 Лагерь "Парус". Система голосования.</p>
+            <p>&copy; 2027 Лагерь «Парус». Система голосования.</p>
             <a href="/admin">Административная панель</a>
         </footer>
     </div>

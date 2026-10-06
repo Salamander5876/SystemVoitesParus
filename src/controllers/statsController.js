@@ -14,12 +14,22 @@ class StatsController {
             const totalVotes = Vote.getTotalCount();
             const uniqueVoters = Vote.getUniqueVotersCount();
 
+            // Явка от списка избирателей (в процентах)
+            const EligibleVoter = require('../models/EligibleVoter');
+            const evStats = EligibleVoter.getStats();
+            const turnoutPercent = evStats.total > 0
+                ? Math.round((evStats.voted / evStats.total) * 100)
+                : null; // список избирателей не загружен — процент не считаем
+
             res.json({
                 status,
                 startTime,
                 endTime,
                 totalVotes,
-                uniqueVoters
+                uniqueVoters,
+                eligibleTotal: evStats.total,
+                eligibleVoted: evStats.voted,
+                turnoutPercent
             });
         } catch (error) {
             next(error);
@@ -109,41 +119,10 @@ class StatsController {
     static async getPublicVotesLog(req, res, next) {
         try {
             const Vote = require('../models/Vote');
-            const axios = require('axios');
 
-            // Получаем все голоса
+            // Получаем все голоса. VK-данные (ФИО, фото, ссылка) уже закэшированы
+            // в БД при голосовании — VK API здесь НЕ дёргаем (защита от rate-limit).
             const allVotes = Vote.getAllWithFullInfo();
-
-            // Получаем уникальные VK ID
-            const vkIds = [...new Set(allVotes.map(v => v.vk_id))];
-
-            let vkUsersMap = {};
-
-            // Получаем информацию из VK API
-            if (vkIds.length > 0) {
-                try {
-                    const VK_TOKEN = process.env.VK_TOKEN;
-                    const response = await axios.get('https://api.vk.com/method/users.get', {
-                        params: {
-                            user_ids: vkIds.join(','),
-                            fields: 'first_name,last_name',
-                            access_token: VK_TOKEN,
-                            v: '5.199'
-                        }
-                    });
-
-                    if (response.data.response) {
-                        response.data.response.forEach(user => {
-                            vkUsersMap[user.id] = {
-                                first_name: user.first_name,
-                                last_name: user.last_name
-                            };
-                        });
-                    }
-                } catch (vkError) {
-                    console.error('Error fetching VK user info:', vkError);
-                }
-            }
 
             // Группируем голоса по VK ID
             const groupedVotes = {};
@@ -153,8 +132,10 @@ class StatsController {
                     groupedVotes[vote.vk_id] = {
                         vk_id: vote.vk_id,
                         full_name: vote.full_name,
-                        vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
-                        vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null,
+                        vk_first_name: vote.vk_first_name || null,
+                        vk_last_name: vote.vk_last_name || null,
+                        vk_photo_url: vote.vk_photo_url || null,
+                        vk_screen_name: vote.vk_screen_name || null,
                         created_at: vote.created_at, // Дата первого голоса
                         votes_count: 0,
                         all_cancelled: true
@@ -181,15 +162,17 @@ class StatsController {
                 full_name: vote.full_name,
                 vk_first_name: vote.vk_first_name,
                 vk_last_name: vote.vk_last_name,
+                vk_photo_url: vote.vk_photo_url,
+                vk_screen_name: vote.vk_screen_name,
                 created_at: vote.created_at,
                 votes_count: vote.votes_count,
                 is_cancelled: vote.all_cancelled ? 1 : 0 // Если ВСЕ голоса аннулированы
             }));
 
-            // Сортируем по дате (новые сначала)
-            votesArray.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-            // Переназначаем ID после сортировки
+            // Порядковый номер = хронология голосования:
+            // самый ранний проголосовавший = №1, самый свежий = №N.
+            // (Сортировку для показа новых сверху делает фронтенд по убыванию номера.)
+            votesArray.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
             votesArray.forEach((vote, index) => {
                 vote.id = index + 1;
             });
@@ -207,6 +190,47 @@ class StatsController {
         }
     }
 
+    // Публичная проверка голоса по псевдониму.
+    // Анонимность сохраняется: в ответе только псевдоним, смены, выбор и статус —
+    // ни ФИО, ни vk_id не раскрываются.
+    static verifyVote(req, res, next) {
+        try {
+            const nickname = (req.query.nickname || '').trim();
+
+            if (nickname.length < 3 || nickname.length > 60) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Введите псевдоним (от 3 до 60 символов)'
+                });
+            }
+
+            const votes = Vote.getByNickname(nickname);
+
+            if (votes.length === 0) {
+                return res.json({
+                    success: true,
+                    found: false
+                });
+            }
+
+            const votesWithLocalTime = convertArrayToLocalTime(votes, ['created_at']);
+
+            res.json({
+                success: true,
+                found: true,
+                votes: votesWithLocalTime.map(v => ({
+                    shift_name: v.shift_name,
+                    choice: v.choice,
+                    is_cancelled: v.is_cancelled ? 1 : 0,
+                    cancellation_reason: v.is_cancelled ? (v.cancellation_reason || null) : null,
+                    created_at: v.created_at
+                }))
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     // Получить результаты выборов с победителями
     static async getElectionResults(req, res, next) {
         try {
@@ -214,7 +238,6 @@ class StatsController {
             const Shift = require('../models/Shift');
             const Candidate = require('../models/Candidate');
             const Settings = require('../models/Settings');
-            const axios = require('axios');
 
             // Проверяем, опубликованы ли результаты
             const resultsPublished = Settings.getResultsPublished();
@@ -271,35 +294,9 @@ class StatsController {
                 });
             }
 
-            // Получаем журнал голосов (для итоговой ведомости)
+            // Получаем журнал голосов (для итоговой ведомости).
+            // VK-данные берём из кэша в БД, без обращения к VK API.
             const allVotes = Vote.getAllWithFullInfo();
-            const vkIds = [...new Set(allVotes.map(v => v.vk_id))];
-            let vkUsersMap = {};
-
-            if (vkIds.length > 0) {
-                try {
-                    const VK_TOKEN = process.env.VK_TOKEN;
-                    const response = await axios.get('https://api.vk.com/method/users.get', {
-                        params: {
-                            user_ids: vkIds.join(','),
-                            fields: 'first_name,last_name',
-                            access_token: VK_TOKEN,
-                            v: '5.199'
-                        }
-                    });
-
-                    if (response.data.response) {
-                        response.data.response.forEach(user => {
-                            vkUsersMap[user.id] = {
-                                first_name: user.first_name,
-                                last_name: user.last_name
-                            };
-                        });
-                    }
-                } catch (vkError) {
-                    console.error('Error fetching VK user info:', vkError);
-                }
-            }
 
             const userVotesMap = {};
             allVotes.forEach(vote => {
@@ -311,8 +308,10 @@ class StatsController {
                         id: vote.id,
                         vk_id: vote.vk_id,
                         full_name: vote.full_name,
-                        vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
-                        vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null,
+                        vk_first_name: vote.vk_first_name || null,
+                        vk_last_name: vote.vk_last_name || null,
+                        vk_photo_url: vote.vk_photo_url || null,
+                        vk_screen_name: vote.vk_screen_name || null,
                         created_at: vote.created_at,
                         shifts: {}
                     };

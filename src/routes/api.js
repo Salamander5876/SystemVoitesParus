@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const StatsController = require('../controllers/statsController');
 const VoteController = require('../controllers/voteController');
-const { voteLimiter } = require('../middleware/rateLimiter');
+const { voteLimiter, apiLimiter } = require('../middleware/rateLimiter');
 
 // Публичные эндпоинты
 
@@ -36,6 +36,9 @@ router.get('/users/:vkId/stats', VoteController.getUserStats);
 
 // Публичный журнал голосов (с VK именами)
 router.get('/votes/public-log', StatsController.getPublicVotesLog);
+
+// Публичная проверка своего голоса по псевдониму (с rate limit от перебора)
+router.get('/verify-vote', apiLimiter, StatsController.verifyVote);
 
 // Результаты выборов
 router.get('/election-results', StatsController.getElectionResults);

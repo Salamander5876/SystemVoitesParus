@@ -10,7 +10,7 @@ const db = require('../config/database');
 class VoteController {
     // Создание голоса (вызывается из бота)
     static async createVote(req, res, next) {
-        const transaction = db.transaction((vkId, fullName, nickname, shiftId, candidateId, voteType) => {
+        const transaction = db.transaction((vkId, fullName, nickname, shiftId, candidateId, voteType, vkProfile) => {
             // Проверка статуса голосования
             const votingStatus = Settings.getVotingStatus();
             if (votingStatus !== 'active') {
@@ -54,8 +54,8 @@ class VoteController {
             // Получаем или создаём пользователя
             let user = User.getByVkId(vkId);
             if (!user) {
-                // Создаём нового пользователя
-                const userId = User.create(vkId, fullName, nickname);
+                // Создаём нового пользователя (кэшируем VK-профиль)
+                const userId = User.create(vkId, fullName, nickname, vkProfile || {});
                 user = User.getById(userId);
             } else {
                 // Пользователь уже существует - обновляем его данные
@@ -64,6 +64,8 @@ class VoteController {
                     fullName: fullName,
                     nickname: nickname
                 });
+                // Обновляем закэшированный VK-профиль (не затирая уже сохранённое)
+                User.updateVkProfile(vkId, vkProfile || {});
                 // Перезагружаем обновлённые данные
                 user = User.getById(user.id);
             }
@@ -100,7 +102,7 @@ class VoteController {
         });
 
         try {
-            const { vkId, fullName, nickname, shiftId, candidateId, voteType } = req.body;
+            const { vkId, fullName, nickname, shiftId, candidateId, voteType, vkProfile } = req.body;
 
             // Валидация
             if (!vkId || !fullName || !nickname || !shiftId || !voteType) {
@@ -116,7 +118,7 @@ class VoteController {
                 return res.status(400).json({ error: 'Не указан кандидат' });
             }
 
-            const result = transaction(vkId, fullName, nickname, shiftId, candidateId, voteType);
+            const result = transaction(vkId, fullName, nickname, shiftId, candidateId, voteType, vkProfile);
 
             logger.info('Vote created:', {
                 vkId,
@@ -277,48 +279,93 @@ class VoteController {
     }
 
     // Генерация уникального псевдонима (для бота)
+    //
+    // ВАЖНО (фикс гонки): раньше ник только возвращался боту, а в БД попадал
+    // намного позже — при отправке голоса. Двое одновременно получали одинаковый ник.
+    // Теперь ник СРАЗУ резервируется в таблице users (upsert по vk_id) под защитой
+    // UNIQUE-индекса idx_unique_nickname. better-sqlite3 синхронный, поэтому
+    // «прочитать занятые → сгенерировать → записать» выполняется атомарно.
     static async generateNickname(req, res, next) {
         try {
-            // Массивы для генерации псевдонимов
+            const { vkId, fullName, vkProfile } = req.body;
+
+            if (!vkId || !fullName) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Необходимы vkId и fullName'
+                });
+            }
+
             const adjectives = [
-                "Сияющий", "Лунный", "Звёздный", "Туманный", "Искрящийся",
-                "Серебристый", "Эфирный", "Солнечный", "Таинственный", "Мерцающий",
-                "Кристальный", "Волшебный", "Небесный", "Добрый", "Закатный"
+                "Штормовой", "Глубоководный", "Жемчужный", "Коралловый", "Абордажный",
+                "Просоленный", "Призрачный", "Затонувший", "Рифовый", "Бездонный",
+                "Бесстрашный", "Подводный", "Вольный", "Трехмачтовый", "Морской",
+                "Античный", "Спартанский", "Олимпийский", "Бронзовый", "Рунический",
+                "Легендарный", "Божественный", "Мифический", "Мраморный", "Священный",
+                "Эпический", "Грозный", "Непобедимый", "Золотой", "Мудрый"
             ];
 
-            const nouns = [
-                "Дух", "Эльф", "Феникс", "Единорог", "Грифон", "Дракон",
-                "Ангел", "Гном", "Сильф", "Леший", "Водяной", "Домовой",
-                "Светлячок", "Хранитель", "Странник", "Чародей", "Звёздочет",
-                "Лунатик", "Волшебник", "Кот", "Мудрец", "Герой", "Филин",
-                "Фавн", "Рыцарь", "Бард", "Морж", "Страж", "Вестник", "Мечтатель"
-            ];
+            const nouns = ["Капитан", "Кракен", "Корсар", "Боцман", "Пират",
+                "Скат", "Осьминог", "Кашалот", "Флибустьер", "Матрос",
+                "Галеон", "Штурвал", "Маяк", "Компас", "Сундук", "Гладиатор", 
+                "Фараон", "Титан", "Центурион", "Жрец",
+                "Викинг", "Кентавр", "Минотавр", "Философ", "Оракул",
+                "Легионер", "Циклоп", "Полубог", "Герой", "Атлант"
+                ];
 
-            // Получаем все существующие псевдонимы
-            const stmt = db.prepare("SELECT nickname FROM users WHERE nickname IS NOT NULL AND nickname != ''");
-            const users = stmt.all();
-            const usedNicknames = new Set(users.map(u => u.nickname).filter(Boolean));
-
-            let nickname;
-            let attempts = 0;
-            const maxAttempts = 200;
-
-            // Генерируем уникальный псевдоним
-            do {
+            const randomNickname = () => {
                 const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
                 const noun = nouns[Math.floor(Math.random() * nouns.length)];
-                nickname = `${adj} ${noun}`;
+                return { base: `${adj} ${noun}`, adj, noun };
+            };
 
-                attempts++;
-                if (attempts > maxAttempts) {
-                    // Если закончились комбинации – добавляем случайное число
-                    const num = Math.floor(Math.random() * 900) + 100;
-                    nickname = `${adj} ${noun} ${num}`;
-                    break;
+            const maxAttempts = 250;
+            let nickname = null;
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                // Читаем актуальный набор занятых ников на каждой попытке —
+                // между итерациями другой запрос мог уже что-то зарезервировать.
+                const used = new Set(
+                    db.prepare("SELECT nickname FROM users WHERE nickname IS NOT NULL AND nickname != ''")
+                        .all()
+                        .map(u => u.nickname)
+                );
+
+                const { base } = randomNickname();
+                let candidate = base;
+
+                // Если базовая комбинация занята — добавляем число
+                if (used.has(candidate)) {
+                    candidate = `${base} ${Math.floor(Math.random() * 900) + 100}`;
                 }
-            } while (usedNicknames.has(nickname));
+                if (used.has(candidate)) {
+                    continue; // редкая коллизия — пробуем заново
+                }
 
-            logger.info(`Generated unique nickname: ${nickname} (attempts: ${attempts})`);
+                try {
+                    // Атомарно резервируем ник за пользователем
+                    User.reserveNickname(vkId.toString(), fullName, candidate, vkProfile || {});
+                    nickname = candidate;
+                    break;
+                } catch (err) {
+                    // UNIQUE-коллизия по nickname — параллельный запрос успел раньше.
+                    if (err.code === 'SQLITE_CONSTRAINT_UNIQUE' || err.code === 'SQLITE_CONSTRAINT') {
+                        logger.warn(`Nickname collision on reserve: "${candidate}", retrying`);
+                        continue;
+                    }
+                    throw err;
+                }
+            }
+
+            if (!nickname) {
+                logger.error('Failed to reserve unique nickname after retries');
+                return res.status(500).json({
+                    success: false,
+                    error: 'Не удалось сгенерировать уникальный псевдоним'
+                });
+            }
+
+            logger.info(`Reserved unique nickname: ${nickname} for vk_id ${vkId}`);
 
             res.json({
                 success: true,

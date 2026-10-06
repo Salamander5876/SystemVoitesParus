@@ -707,41 +707,9 @@ class AdminController {
     // Получить все голоса с полной информацией (для журнала аудита)
     static async getVotesAuditLog(req, res, next) {
         try {
+            // VK-данные (ФИО, фото, ссылка) закэшированы в БД при голосовании —
+            // VK API не дёргаем (защита от rate-limit при большом числе голосов).
             const votes = Vote.getAllWithFullInfo();
-
-            // Получаем информацию о пользователях из VK API
-            const vkIds = [...new Set(votes.map(v => v.vk_id))]; // Уникальные VK ID
-
-            let vkUsersMap = {};
-
-            if (vkIds.length > 0) {
-                try {
-                    const axios = require('axios');
-                    const VK_TOKEN = process.env.VK_TOKEN;
-
-                    // VK API позволяет запрашивать до 1000 пользователей за раз
-                    const response = await axios.get('https://api.vk.com/method/users.get', {
-                        params: {
-                            user_ids: vkIds.join(','),
-                            fields: 'first_name,last_name',
-                            access_token: VK_TOKEN,
-                            v: '5.199'
-                        }
-                    });
-
-                    if (response.data.response) {
-                        response.data.response.forEach(user => {
-                            vkUsersMap[user.id] = {
-                                first_name: user.first_name,
-                                last_name: user.last_name
-                            };
-                        });
-                    }
-                } catch (vkError) {
-                    console.error('Error fetching VK user info:', vkError);
-                    // Продолжаем без данных из VK
-                }
-            }
 
             // Группируем голоса по VK ID
             const groupedVotes = {};
@@ -751,8 +719,10 @@ class AdminController {
                     groupedVotes[vote.vk_id] = {
                         vk_id: vote.vk_id,
                         full_name: vote.full_name,
-                        vk_first_name: vkUsersMap[vote.vk_id]?.first_name || null,
-                        vk_last_name: vkUsersMap[vote.vk_id]?.last_name || null,
+                        vk_first_name: vote.vk_first_name || null,
+                        vk_last_name: vote.vk_last_name || null,
+                        vk_photo_url: vote.vk_photo_url || null,
+                        vk_screen_name: vote.vk_screen_name || null,
                         created_at: vote.created_at,
                         votes_count: 0,
                         all_cancelled: true,
@@ -783,6 +753,8 @@ class AdminController {
                 full_name: vote.full_name,
                 vk_first_name: vote.vk_first_name,
                 vk_last_name: vote.vk_last_name,
+                vk_photo_url: vote.vk_photo_url,
+                vk_screen_name: vote.vk_screen_name,
                 created_at: vote.created_at,
                 votes_count: vote.votes_count,
                 is_cancelled: vote.all_cancelled ? 1 : 0,

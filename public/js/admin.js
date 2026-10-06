@@ -375,7 +375,7 @@ function renderAuditLog(votes) {
     tbody.innerHTML = '';
 
     if (votes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Голосов пока нет</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Голосов пока нет</td></tr>';
         return;
     }
 
@@ -390,9 +390,8 @@ function renderAuditLog(votes) {
             timeZone: 'Asia/Chita'
         }) : 'Нет данных';
 
-        // Формируем ссылку на профиль VK (показываем только VK ID)
-        const vkLink = `https://vk.com/id${vote.vk_id}`;
-        const vkProfile = `<a href="${vkLink}" target="_blank" rel="noopener noreferrer">id${vote.vk_id}</a>`;
+        // Ячейка избирателя с аватаркой (фото/имя/ссылка из кэша ВК)
+        const voterCell = buildVoterCell(vote);
 
         let statusHTML = '';
         if (vote.is_cancelled) {
@@ -418,14 +417,50 @@ function renderAuditLog(votes) {
         row.innerHTML = `
             <td>${vote.id}</td>
             <td>${date}</td>
-            <td>${vote.full_name}</td>
-            <td>${vkProfile}</td>
+            <td>${voterCell}</td>
             <td>${statusHTML}</td>
             <td>${actionsHTML}</td>
         `;
 
         tbody.appendChild(row);
     });
+}
+
+// Инициалы из ФИО для аватарки-заглушки
+function getInitials(name) {
+    if (!name) return '?';
+    const parts = String(name).trim().split(/\s+/).filter(Boolean);
+    return parts.slice(0, 2).map(p => p[0].toUpperCase()).join('') || '?';
+}
+
+// Аватарка избирателя: фото из кэша ВК, при ошибке/отсутствии — инициалы
+function buildAvatar(vote) {
+    const initials = escapeHtml(getInitials(vote.full_name));
+    const photo = vote.vk_photo_url
+        ? `<img src="${escapeHtml(vote.vk_photo_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">`
+        : '';
+    return `<div class="avatar" aria-hidden="true">${initials}${photo}</div>`;
+}
+
+// Ячейка избирателя: аватар + ФИО (анкета) + ссылка на профиль ВК
+function buildVoterCell(vote) {
+    const vkUrl = vote.vk_screen_name
+        ? `https://vk.com/${encodeURIComponent(vote.vk_screen_name)}`
+        : `https://vk.com/id${encodeURIComponent(vote.vk_id)}`;
+
+    const vkName = (vote.vk_first_name || vote.vk_last_name)
+        ? `${vote.vk_first_name || ''} ${vote.vk_last_name || ''}`.trim()
+        : `id${vote.vk_id}`;
+
+    return `
+        <div class="voter-cell">
+            ${buildAvatar(vote)}
+            <div class="voter-meta">
+                <span class="voter-name">${escapeHtml(vote.full_name)}</span>
+                <a class="voter-vk" href="${vkUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(vkName)}</a>
+            </div>
+        </div>
+    `;
 }
 
 // Helper function to escape HTML

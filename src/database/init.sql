@@ -23,11 +23,17 @@ CREATE TABLE IF NOT EXISTS candidates (
 );
 
 -- Таблица пользователей (голосовавших)
+-- vk_* поля кэшируют данные из VK API (парсятся один раз при голосовании),
+-- чтобы не дёргать VK при каждой отрисовке списка (защита от rate-limit).
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     vk_id TEXT UNIQUE NOT NULL,
     full_name TEXT NOT NULL,
     nickname TEXT NOT NULL,
+    vk_first_name TEXT,
+    vk_last_name TEXT,
+    vk_photo_url TEXT,
+    vk_screen_name TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -103,6 +109,8 @@ CREATE TABLE IF NOT EXISTS message_queue (
 
 -- Индексы для оптимизации
 CREATE INDEX IF NOT EXISTS idx_users_vk_id ON users(vk_id);
+-- Уникальность псевдонима на уровне БД (страховка от гонки генерации ников)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_nickname ON users(nickname);
 CREATE INDEX IF NOT EXISTS idx_votes_user_id ON votes(user_id);
 CREATE INDEX IF NOT EXISTS idx_votes_shift_id ON votes(shift_id);
 CREATE INDEX IF NOT EXISTS idx_votes_candidate_id ON votes(candidate_id);

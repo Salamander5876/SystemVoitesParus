@@ -157,6 +157,10 @@ class Vote {
                 u.vk_id,
                 u.full_name,
                 u.nickname,
+                u.vk_first_name,
+                u.vk_last_name,
+                u.vk_photo_url,
+                u.vk_screen_name,
                 s.name as shift_name,
                 CASE
                     WHEN v.vote_type = 'against_all' THEN 'Против всех'
@@ -334,6 +338,43 @@ class Vote {
         });
 
         return Object.values(grouped);
+    }
+
+    // Публичная проверка голоса по псевдониму (анонимно: без ФИО и vk_id).
+    // Возвращает все голоса, включая аннулированные — избиратель должен видеть их статус.
+    // Регистр не важен: SQLite NOCASE не сворачивает кириллицу, поэтому
+    // псевдоним сопоставляем в JS (toLowerCase корректен для русских букв),
+    // а голоса запрашиваем уже по точному значению из БД.
+    static getByNickname(nickname) {
+        const norm = String(nickname).trim().replace(/\s+/g, ' ').toLowerCase();
+
+        const users = db.prepare(
+            "SELECT nickname FROM users WHERE nickname IS NOT NULL AND nickname != ''"
+        ).all();
+        const match = users.find(
+            u => u.nickname.trim().replace(/\s+/g, ' ').toLowerCase() === norm
+        );
+        if (!match) return [];
+
+        const stmt = db.prepare(`
+            SELECT
+                s.name as shift_name,
+                CASE
+                    WHEN v.vote_type = 'against_all' THEN 'Против всех'
+                    WHEN v.vote_type = 'abstain' THEN 'Воздержался'
+                    ELSE c.name
+                END as choice,
+                v.is_cancelled,
+                v.cancellation_reason,
+                v.created_at
+            FROM votes v
+            JOIN users u ON v.user_id = u.id
+            LEFT JOIN candidates c ON v.candidate_id = c.id
+            JOIN shifts s ON v.shift_id = s.id
+            WHERE u.nickname = ?
+            ORDER BY s.name, v.created_at DESC
+        `);
+        return stmt.all(match.nickname);
     }
 
     // Получить список всех смен для заголовков таблицы

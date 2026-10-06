@@ -90,11 +90,43 @@ async function clearConversationHistory(userId) {
 }
 
 // ---------------------------------------------------------
-// Генерация уникального псевдонима (запрос к серверу)
+// Парсинг профиля VK (ФИО, ссылка, фото) — вызывается ОДИН РАЗ за сессию.
+// Результат кэшируется в БД, чтобы при отрисовке списков не дёргать VK
+// (в прошлом упирались в rate-limit при >100 проголосовавших).
 // ---------------------------------------------------------
-async function generateUniqueNickname() {
+async function getVkProfile(userId) {
     try {
-        const { data } = await axios.post(`${API_URL}/generate-nickname`, {}, {
+        const [profile] = await vk.api.users.get({
+            user_ids: userId,
+            fields: 'photo_200,screen_name'
+        });
+
+        if (!profile) return null;
+
+        return {
+            vk_first_name: profile.first_name || null,
+            vk_last_name: profile.last_name || null,
+            vk_photo_url: profile.photo_200 || null,
+            // screen_name может отсутствовать — тогда ссылка будет вида id123
+            vk_screen_name: profile.screen_name || null
+        };
+    } catch (err) {
+        logger.error('Не удалось получить профиль VK:', err.message);
+        return null; // некритично — продолжаем без кэша, ссылку соберём по vk_id
+    }
+}
+
+// ---------------------------------------------------------
+// Генерация уникального псевдонима (запрос к серверу).
+// Сервер СРАЗУ резервирует ник за пользователем (защита от гонки).
+// ---------------------------------------------------------
+async function generateUniqueNickname(vkId, fullName, vkProfile) {
+    try {
+        const { data } = await axios.post(`${API_URL}/generate-nickname`, {
+            vkId: vkId.toString(),
+            fullName,
+            vkProfile: vkProfile || null
+        }, {
             headers: API_HEADERS
         });
 
@@ -155,7 +187,7 @@ async function checkVoterEligibility(fullName, vkId) {
     }
 }
 
-async function submitVote(vkId, fullName, nickname, shiftId, candidateId, voteType) {
+async function submitVote(vkId, fullName, nickname, shiftId, candidateId, voteType, vkProfile) {
     try {
         const { data } = await axios.post(`${API_URL}/vote`, {
             vkId: vkId.toString(),
@@ -163,7 +195,8 @@ async function submitVote(vkId, fullName, nickname, shiftId, candidateId, voteTy
             nickname,
             shiftId,
             candidateId,
-            voteType
+            voteType,
+            vkProfile: vkProfile || null
         }, { headers: API_HEADERS });
         return data;
     } catch (error) {
@@ -315,10 +348,13 @@ vk.updates.on('message_new', async (context) => {
                     });
                 }
 
-                // Генерируем уникальный псевдоним
+                // Парсим профиль VK один раз (ФИО, фото, ссылка) и кэшируем
+                const vkProfile = await getVkProfile(userId);
+
+                // Генерируем уникальный псевдоним (сервер сразу его резервирует)
                 let nickname;
                 try {
-                    nickname = await generateUniqueNickname();
+                    nickname = await generateUniqueNickname(userId, text, vkProfile);
                 } catch (error) {
                     resetUserState(userId);
                     return context.send('Не удалось сгенерировать псевдоним. Попробуйте позже.', {
@@ -338,6 +374,7 @@ vk.updates.on('message_new', async (context) => {
                 updateUserState(userId, USER_STATES.AWAITING_CANDIDATE, {
                     fullName: text,
                     nickname,
+                    vkProfile, // кэшируем профиль на всю сессию голосования
                     shifts: allShifts,
                     currentShiftIndex: 0,
                     votes: [] // Массив всех голосов для финального подтверждения
@@ -501,7 +538,8 @@ vk.updates.on('message_new', async (context) => {
                         state.data.nickname,
                         vote.shiftId,
                         vote.candidateId,
-                        vote.voteType
+                        vote.voteType,
+                        state.data.vkProfile
                     );
                     results.push({ ...vote, success: result.success, error: result.error });
                 }
@@ -545,6 +583,18 @@ vk.updates.on('message_new', async (context) => {
                     });
                 }
         }
+
+        // ----------------- ФОЛЛБЭК -----------------
+        // Любое непонятое сообщение (в т.ч. от вернувшихся пользователей со
+        // старой перепиской, когда бот в состоянии IDLE) — показываем
+        // приветствие с кнопкой, чтобы человек мог сразу начать голосование.
+        resetUserState(userId);
+        return context.send(MESSAGES.WELCOME, {
+            keyboard: Keyboard.builder()
+                .textButton({ label: BUTTONS.START_VOTING, color: Keyboard.PRIMARY_COLOR })
+                .row()
+                .textButton({ label: '/help', color: Keyboard.SECONDARY_COLOR })
+        });
 
     } catch (error) {
         logger.error('Bot error:', error);

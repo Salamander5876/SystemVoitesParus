@@ -33,3 +33,6 @@ docker-compose.override.yml
 # Temporary files
 tmp/
 temp/
+
+# MCP config (содержит API-ключ)
+.mcp.json
