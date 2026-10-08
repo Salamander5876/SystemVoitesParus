@@ -37,6 +37,10 @@ function getUserLock(userId) {
 const API_URL = `http://localhost:${process.env.PORT || 3000}/api`;
 const API_HEADERS = { 'x-bot-secret': process.env.VK_SECRET };
 
+// По умолчанию у axios таймаута нет: зависший запрос к API навсегда держит
+// мьютекс пользователя, и бот перестаёт ему отвечать.
+axios.defaults.timeout = parseInt(process.env.BOT_API_TIMEOUT) || 10000;
+
 function getUserState(userId) {
     if (!userStates.has(userId)) {
         userStates.set(userId, {
@@ -146,7 +150,7 @@ async function generateUniqueNickname(vkId, fullName, vkProfile) {
 // API функции
 async function getVotingStatus() {
     try {
-        const { data } = await axios.get(`${API_URL}/status`);
+        const { data } = await axios.get(`${API_URL}/status`, { headers: API_HEADERS });
         return data;
     } catch (error) {
         logger.error('Error fetching status:', error);
@@ -156,7 +160,7 @@ async function getVotingStatus() {
 
 async function getShifts() {
     try {
-        const { data } = await axios.get(`${API_URL}/shifts`);
+        const { data } = await axios.get(`${API_URL}/shifts`, { headers: API_HEADERS });
         return data.shifts;
     } catch (error) {
         logger.error('Error fetching shifts:', error);
@@ -166,7 +170,7 @@ async function getShifts() {
 
 async function getCandidates(shiftId) {
     try {
-        const { data } = await axios.get(`${API_URL}/shifts/${shiftId}/candidates`);
+        const { data } = await axios.get(`${API_URL}/shifts/${shiftId}/candidates`, { headers: API_HEADERS });
         return data.candidates;
     } catch (error) {
         logger.error('Error fetching candidates:', error);
@@ -271,7 +275,7 @@ vk.updates.on('message_new', async (context) => {
 
         if (text === '/mystats') {
             try {
-                const { data } = await axios.get(`${API_URL}/users/${userId}/stats`);
+                const { data } = await axios.get(`${API_URL}/users/${userId}/stats`, { headers: API_HEADERS });
                 const { user, stats, votes } = data;
                 let msg = `Ваша статистика:\n\n`;
                 msg += `Псевдоним: ${user.nickname}\n`;
@@ -598,7 +602,9 @@ vk.updates.on('message_new', async (context) => {
 
     } catch (error) {
         logger.error('Bot error:', error);
-        return context.send('Произошла ошибка. Попробуйте /start');
+        // Отправка тоже может упасть (ошибка VK API) — не даём ей стать unhandled rejection
+        return context.send('Произошла ошибка. Попробуйте /start')
+            .catch((sendError) => logger.error('Failed to send error message:', sendError));
     } finally {
         // Всегда освобождаем блокировку для этого пользователя
         release();
@@ -617,9 +623,20 @@ vk.updates.on('message_new', async (context) => {
 // ---------------------------------------------------------
 const MessageQueue = require('./models/MessageQueue');
 
+let isQueueProcessing = false;
+let isBotStopping = false;
+
 async function processMessageQueue() {
+    // Не запускаем новый проход, пока не закончен предыдущий (50 сообщений через VK
+    // могут обрабатываться дольше интервала) или если процесс завершается
+    if (isQueueProcessing || isBotStopping) return;
+    isQueueProcessing = true;
+
+    let pendingMessages = [];
+    let handled = 0;
+
     try {
-        const pendingMessages = MessageQueue.getPending(50); // Берём до 50 сообщений за раз
+        pendingMessages = MessageQueue.getPending(50); // Берём до 50 сообщений за раз
 
         if (pendingMessages.length === 0) {
             return; // Нет сообщений в очереди
@@ -628,6 +645,8 @@ async function processMessageQueue() {
         logger.info(`Processing ${pendingMessages.length} messages from queue`);
 
         for (const msg of pendingMessages) {
+            if (isBotStopping) break;
+            handled++;
             try {
                 // Отправляем сообщение через VK API
                 await vk.api.messages.send({
@@ -676,15 +695,48 @@ async function processMessageQueue() {
 
     } catch (error) {
         logger.error('Error processing message queue:', error);
+    } finally {
+        // Сообщения, которые взяли в работу, но не успели отправить (остановка
+        // процесса), возвращаем в pending — иначе они навсегда останутся в 'processing'
+        for (const msg of pendingMessages.slice(handled)) {
+            try {
+                MessageQueue.resetToPending(msg.id);
+            } catch (resetError) {
+                logger.error(`Failed to reset message ${msg.id} to pending:`, resetError);
+            }
+        }
+        isQueueProcessing = false;
     }
 }
 
-// Запускаем обработчик очереди автоматически
 // Запускаем обработчик очереди каждую минуту
-setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
+const queueInterval = setInterval(processMessageQueue, 60000); // 60000 мс = 1 минута
 
 // Запускаем первую обработку сразу после старта (через 5 секунд)
-setTimeout(processMessageQueue, 5000);
+const queueStartTimeout = setTimeout(processMessageQueue, 5000);
+
+// Остановка фоновых задач бота: таймеры очереди, long poll, ожидание текущего прохода очереди
+async function stopBot() {
+    if (isBotStopping) return;
+    isBotStopping = true;
+
+    clearInterval(queueInterval);
+    clearTimeout(queueStartTimeout);
+
+    if (vk.updates.isStarted) {
+        try {
+            await vk.updates.stop();
+            logger.info('VK Bot polling stopped');
+        } catch (error) {
+            logger.error('Error stopping VK polling:', error);
+        }
+    }
+
+    // Текущее сообщение досылается, остальные возвращаются в pending (см. finally выше)
+    while (isQueueProcessing) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+}
 
 logger.info('Message queue processor initialized (running every minute)');
 
@@ -725,4 +777,39 @@ if (require.main === module) {
     }
 }
 
+// Graceful shutdown для отдельного процесса бота (npm run start:bot).
+// Когда bot.js подключён из server.js, остановкой управляет server.js.
+if (require.main === module) {
+    let isShuttingDown = false;
+
+    const shutdown = async (signal, exitCode = 0) => {
+        if (isShuttingDown) return;
+        isShuttingDown = true;
+        logger.info(`${signal} received, stopping bot [PID: ${process.pid}]`);
+
+        setTimeout(() => process.exit(1), parseInt(process.env.SHUTDOWN_TIMEOUT) || 8000).unref();
+
+        try {
+            await stopBot();
+            const db = require('./config/database');
+            if (db.open) db.close();
+        } catch (error) {
+            logger.error('Error during bot shutdown:', error);
+            exitCode = 1;
+        }
+        process.exit(exitCode);
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('unhandledRejection', (reason) => {
+        logger.error('Unhandled promise rejection:', reason);
+    });
+    process.on('uncaughtException', (error) => {
+        logger.error('Uncaught exception, shutting down:', error);
+        shutdown('uncaughtException', 1);
+    });
+}
+
 module.exports = vk;
+module.exports.stopBot = stopBot;

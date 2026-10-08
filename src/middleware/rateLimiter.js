@@ -1,6 +1,12 @@
 const rateLimit = require('express-rate-limit');
 
-// Общий rate limiter для API
+// Раньше хватало ЛЮБОГО значения заголовка, чтобы обойти лимит
+const isBotRequest = (req) =>
+    !!process.env.VK_SECRET && req.headers['x-bot-secret'] === process.env.VK_SECRET;
+
+// Общий rate limiter для API (изменяющие запросы).
+// GET-запросы страницы сюда не входят: на каждый голос каждая открытая страница
+// делает 2 запроса, и при 30/мин сайт отдавал 429 уже через ~5 проголосовавших.
 const apiLimiter = rateLimit({
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 60000, // 1 минута
     max: parseInt(process.env.RATE_LIMIT_MAX) || 30, // 30 запросов
@@ -16,10 +22,28 @@ const apiLimiter = rateLimit({
         // Иначе используем IP (работает с trust proxy)
         return req.ip;
     },
-    skip: (req) => {
-        // Отключаем валидацию для запросов от бота
-        return !!req.headers['x-bot-secret'];
-    }
+    skip: (req) => isBotRequest(req) || req.method === 'GET'
+});
+
+// Лимит на чтение публичных данных — защищает от флуда, но не от обычной работы страницы
+const readLimiter = rateLimit({
+    windowMs: 60000,
+    max: parseInt(process.env.RATE_LIMIT_READ_MAX) || 300,
+    message: 'Слишком много запросов с этого IP, попробуйте позже',
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip,
+    skip: (req) => isBotRequest(req) || req.method !== 'GET'
+});
+
+// Проверка голоса по псевдониму — строгий лимит от перебора
+const verifyVoteLimiter = rateLimit({
+    windowMs: 60000,
+    max: parseInt(process.env.RATE_LIMIT_MAX) || 30,
+    message: 'Слишком много запросов с этого IP, попробуйте позже',
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.ip
 });
 
 // Строгий limiter для админ логина
@@ -57,6 +81,8 @@ const voteLimiter = rateLimit({
 
 module.exports = {
     apiLimiter,
+    readLimiter,
+    verifyVoteLimiter,
     adminLoginLimiter,
     voteLimiter
 };

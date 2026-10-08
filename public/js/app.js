@@ -22,6 +22,7 @@ async function init() {
 async function loadStatus() {
     try {
         const response = await fetch('/api/status');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
         updateStatus(data);
     } catch (error) {
@@ -66,16 +67,21 @@ function updateTurnout(data) {
 }
 
 // Загрузка журнала голосов
+let votesLogLoaded = false;
 async function loadVotesLog(flashTop = false) {
     try {
         const response = await fetch('/api/votes/public-log');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = await response.json();
 
         if (data.success) {
             renderVotesLog(data.votes, flashTop);
+            votesLogLoaded = true;
         }
     } catch (error) {
         console.error('Error loading votes log:', error);
+        // Временная ошибка не должна стирать уже показанный журнал
+        if (votesLogLoaded) return;
         elements.votesLogBody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--danger);">Ошибка загрузки данных</td></tr>';
     }
 }
@@ -334,12 +340,19 @@ function setupWebSocket() {
         setVoterCount(data.uniqueVoters || 0);
     });
 
-    // Новый голос — празднуем и перезагружаем ленту с подсветкой
+    // Новый голос — празднуем и перезагружаем ленту с подсветкой.
+    // Один проголосовавший даёт по событию на каждую смену, а при наплыве их десятки —
+    // объединяем серию событий в одну перезагрузку (не чаще раза в 2 секунды).
+    let refreshTimer = null;
     socket.on('new_vote', () => {
         celebrateVote();
-        loadVotesLog(true);
-        // подтягиваем актуальный счётчик с сервера
-        loadStatus();
+        if (refreshTimer) return;
+        refreshTimer = setTimeout(() => {
+            refreshTimer = null;
+            loadVotesLog(true);
+            // подтягиваем актуальный счётчик с сервера
+            loadStatus();
+        }, 2000);
     });
 
     // Обновление статуса голосования

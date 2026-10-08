@@ -9,7 +9,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const logger = require('./utils/logger');
 const errorHandler = require('./middleware/errorHandler');
-const { apiLimiter } = require('./middleware/rateLimiter');
+const { apiLimiter, readLimiter } = require('./middleware/rateLimiter');
 
 // Routes
 const apiRoutes = require('./routes/api');
@@ -27,8 +27,9 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
-// Trust proxy (для корректной работы за Nginx)
-app.set('trust proxy', true);
+// Trust proxy (для корректной работы за Nginx на этом же сервере).
+// 'loopback' вместо true: с true req.ip брался из подделываемого клиентом X-Forwarded-For.
+app.set('trust proxy', process.env.TRUST_PROXY || 'loopback');
 
 // Middleware
 app.use(express.json());
@@ -38,7 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Rate limiting для API
-app.use('/api', apiLimiter);
+app.use('/api', apiLimiter, readLimiter);
 
 // Сохраняем io в app для доступа из контроллеров
 app.set('io', io);
@@ -69,7 +70,7 @@ app.get('/admin/dashboard', (req, res) => {
 
 // WebSocket events
 io.on('connection', (socket) => {
-    logger.info('Client connected:', socket.id);
+    logger.info(`Client connected: ${socket.id}`);
 
     socket.on('subscribe_shift', (shiftId) => {
         socket.join(`shift_${shiftId}`);
@@ -82,7 +83,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-        logger.info('Client disconnected:', socket.id);
+        logger.info(`Client disconnected: ${socket.id}`);
     });
 });
 
@@ -91,37 +92,43 @@ app.use(errorHandler);
 
 // Функция для отправки обновлений таймера, статуса и статистики через Socket.IO
 function broadcastTimerUpdate() {
-    const Settings = require('./models/Settings');
-    const Vote = require('./models/Vote');
-    const status = Settings.getVotingStatus();
-    const endTime = Settings.getEndTime();
+    // Без try/catch любое исключение (например SQLITE_BUSY) внутри setInterval
+    // становится uncaughtException и роняет весь процесс.
+    try {
+        const Settings = require('./models/Settings');
+        const Vote = require('./models/Vote');
+        const status = Settings.getVotingStatus();
+        const endTime = Settings.getEndTime();
 
-    // Получаем количество уникальных проголосовавших
-    const uniqueVoters = Vote.getUniqueVotersCount();
+        // Получаем количество уникальных проголосовавших
+        const uniqueVoters = Vote.getUniqueVotersCount();
 
-    if (status === 'active' && endTime) {
-        const now = new Date();
-        const end = new Date(endTime);
-        const diff = end - now;
+        if (status === 'active' && endTime) {
+            const now = new Date();
+            const end = new Date(endTime);
+            const diff = end - now;
 
-        io.emit('timer_update', {
-            endTime: endTime,
-            timeLeft: Math.max(0, diff),
-            status: status,
-            uniqueVoters: uniqueVoters
-        });
-    } else {
-        io.emit('timer_update', {
-            endTime: null,
-            timeLeft: 0,
-            status: status,
-            uniqueVoters: uniqueVoters
-        });
+            io.emit('timer_update', {
+                endTime: endTime,
+                timeLeft: Math.max(0, diff),
+                status: status,
+                uniqueVoters: uniqueVoters
+            });
+        } else {
+            io.emit('timer_update', {
+                endTime: null,
+                timeLeft: 0,
+                status: status,
+                uniqueVoters: uniqueVoters
+            });
+        }
+    } catch (error) {
+        logger.error('Error broadcasting timer update:', error);
     }
 }
 
-// Отправляем обновления таймера каждые 2 секунды
-setInterval(broadcastTimerUpdate, 1000);
+// Отправляем обновления таймера каждую секунду
+const timerUpdateInterval = setInterval(broadcastTimerUpdate, 1000);
 
 // ---------------------------------------------------------
 // Автоматическое завершение выборов по таймеру
@@ -212,10 +219,10 @@ async function checkElectionTimeout() {
 }
 
 // Проверяем таймер каждые 10 секунд
-setInterval(checkElectionTimeout, 10000);
+const electionCheckInterval = setInterval(checkElectionTimeout, 10000);
 
 // Первая проверка через 5 секунд после старта
-setTimeout(checkElectionTimeout, 5000);
+const electionCheckTimeout = setTimeout(checkElectionTimeout, 5000);
 
 logger.info('Auto-finish election timer initialized (checking every 10 seconds)');
 
@@ -229,21 +236,76 @@ server.listen(PORT, () => {
     setTimeout(broadcastTimerUpdate, 1000);
 });
 
+// ---------------------------------------------------------
 // Graceful shutdown
-process.on('SIGTERM', () => {
-    logger.info('SIGTERM received, shutting down gracefully');
-    server.close(() => {
-        logger.info('Server closed');
-        process.exit(0);
-    });
+// ---------------------------------------------------------
+// server.close() сам по себе НЕ завершается, пока открыты WebSocket-соединения
+// Socket.IO и keep-alive соединения — из-за этого процесс висел до SIGKILL от PM2.
+// Поэтому: останавливаем таймеры и бота, закрываем io (отключает клиентов и
+// закрывает HTTP-сервер), принудительно рвём оставшиеся соединения, закрываем БД.
+const SHUTDOWN_TIMEOUT = parseInt(process.env.SHUTDOWN_TIMEOUT) || 8000;
+let isShuttingDown = false;
+
+async function shutdown(signal, exitCode = 0) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+
+    logger.info(`${signal} received, shutting down gracefully [PID: ${process.pid}]`);
+
+    // Страховка: если что-то зависло — выходим сами, не дожидаясь SIGKILL
+    setTimeout(() => {
+        logger.error(`Graceful shutdown timed out after ${SHUTDOWN_TIMEOUT}ms, forcing exit`);
+        process.exit(1);
+    }, SHUTDOWN_TIMEOUT).unref();
+
+    try {
+        clearInterval(timerUpdateInterval);
+        clearInterval(electionCheckInterval);
+        clearTimeout(electionCheckTimeout);
+
+        // Таймеры очереди сообщений и long poll бота (bot.js подключается через routes/botWebhook)
+        await require('./bot').stopBot();
+
+        // Закрываем idle keep-alive соединения сразу, активные — через 3 секунды
+        server.closeIdleConnections?.();
+        const forceCloseTimer = setTimeout(() => server.closeAllConnections?.(), 3000);
+        forceCloseTimer.unref();
+
+        // io.close() отключает всех клиентов Socket.IO и вызывает server.close()
+        await new Promise((resolve) => {
+            io.close((err) => {
+                if (err && err.code !== 'ERR_SERVER_NOT_RUNNING') {
+                    logger.error('Error closing server:', err);
+                }
+                resolve();
+            });
+        });
+        clearTimeout(forceCloseTimer);
+        logger.info('HTTP and WebSocket server closed');
+
+        const db = require('./config/database');
+        if (db.open) {
+            db.close();
+            logger.info('Database connection closed');
+        }
+    } catch (error) {
+        logger.error('Error during graceful shutdown:', error);
+        exitCode = 1;
+    }
+
+    process.exit(exitCode);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled promise rejection:', reason);
 });
 
-process.on('SIGINT', () => {
-    logger.info('SIGINT received, shutting down gracefully');
-    server.close(() => {
-        logger.info('Server closed');
-        process.exit(0);
-    });
+process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception, shutting down:', error);
+    shutdown('uncaughtException', 1);
 });
 
 module.exports = { app, server, io };

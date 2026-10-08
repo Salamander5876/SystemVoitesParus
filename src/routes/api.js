@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const StatsController = require('../controllers/statsController');
 const VoteController = require('../controllers/voteController');
-const { voteLimiter, apiLimiter } = require('../middleware/rateLimiter');
+const { voteLimiter, verifyVoteLimiter } = require('../middleware/rateLimiter');
 
 // Публичные эндпоинты
 
@@ -38,7 +38,7 @@ router.get('/users/:vkId/stats', VoteController.getUserStats);
 router.get('/votes/public-log', StatsController.getPublicVotesLog);
 
 // Публичная проверка своего голоса по псевдониму (с rate limit от перебора)
-router.get('/verify-vote', apiLimiter, StatsController.verifyVote);
+router.get('/verify-vote', verifyVoteLimiter, StatsController.verifyVote);
 
 // Результаты выборов
 router.get('/election-results', StatsController.getElectionResults);
@@ -47,10 +47,11 @@ router.get('/election-results', StatsController.getElectionResults);
 router.get('/export-results', StatsController.exportPublicResults);
 
 // Получить все псевдонимы (для проверки уникальности при генерации)
-router.get('/users/nicknames', async (req, res) => {
+router.get('/users/nicknames', (req, res) => {
     try {
-        const db = req.app.locals.db; // Получаем db из app
-        const users = await db.all('SELECT nickname FROM users WHERE nickname IS NOT NULL AND nickname != ""');
+        // req.app.locals.db нигде не задаётся, а у better-sqlite3 нет db.all() — роут всегда отдавал 500
+        const db = require('../config/database');
+        const users = db.prepare("SELECT nickname FROM users WHERE nickname IS NOT NULL AND nickname != ''").all();
         const nicknames = users.map(u => u.nickname).filter(Boolean);
         res.json({ nicknames });
     } catch (error) {

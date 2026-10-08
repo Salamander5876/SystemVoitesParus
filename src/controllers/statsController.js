@@ -3,37 +3,59 @@ const Candidate = require('../models/Candidate');
 const Vote = require('../models/Vote');
 const Settings = require('../models/Settings');
 const { convertArrayToLocalTime, convertToLocalTime } = require('../utils/timezone');
+const db = require('../config/database');
+
+// Кэш публичных ответов: при каждом голосе их одновременно запрашивают ВСЕ открытые
+// страницы, а better-sqlite3 синхронный — сотни одинаковых запросов блокировали сервер.
+// Версия данных: data_version меняется при записи из другого процесса (бот),
+// total_changes() — при записи из этого. Пока БД не менялась, отдаём готовый ответ.
+const totalChangesStmt = db.prepare('SELECT total_changes()').pluck();
+const responseCache = new Map();
+
+function cachedResponse(name, build) {
+    const version = `${db.pragma('data_version', { simple: true })}:${totalChangesStmt.get()}`;
+    const hit = responseCache.get(name);
+    if (hit && hit.version === version) return hit.data;
+
+    const data = build();
+    responseCache.set(name, { version, data });
+    return data;
+}
 
 class StatsController {
     // Получить статус голосования
     static getStatus(req, res, next) {
         try {
-            const status = Settings.getVotingStatus();
-            const startTime = Settings.getStartTime();
-            const endTime = Settings.getEndTime();
-            const totalVotes = Vote.getTotalCount();
-            const uniqueVoters = Vote.getUniqueVotersCount();
-
-            // Явка от списка избирателей (в процентах)
-            const EligibleVoter = require('../models/EligibleVoter');
-            const evStats = EligibleVoter.getStats();
-            const turnoutPercent = evStats.total > 0
-                ? Math.round((evStats.voted / evStats.total) * 100)
-                : null; // список избирателей не загружен — процент не считаем
-
-            res.json({
-                status,
-                startTime,
-                endTime,
-                totalVotes,
-                uniqueVoters,
-                eligibleTotal: evStats.total,
-                eligibleVoted: evStats.voted,
-                turnoutPercent
-            });
+            res.json(cachedResponse('status', StatsController.buildStatus));
         } catch (error) {
             next(error);
         }
+    }
+
+    static buildStatus() {
+        const status = Settings.getVotingStatus();
+        const startTime = Settings.getStartTime();
+        const endTime = Settings.getEndTime();
+        const totalVotes = Vote.getTotalCount();
+        const uniqueVoters = Vote.getUniqueVotersCount();
+
+        // Явка от списка избирателей (в процентах)
+        const EligibleVoter = require('../models/EligibleVoter');
+        const evStats = EligibleVoter.getStats();
+        const turnoutPercent = evStats.total > 0
+            ? Math.round((evStats.voted / evStats.total) * 100)
+            : null; // список избирателей не загружен — процент не считаем
+
+        return {
+            status,
+            startTime,
+            endTime,
+            totalVotes,
+            uniqueVoters,
+            eligibleTotal: evStats.total,
+            eligibleVoted: evStats.voted,
+            turnoutPercent
+        };
     }
 
     // Получить список смен
@@ -116,78 +138,81 @@ class StatsController {
     }
 
     // Публичный журнал голосов с группировкой по пользователям и сменам
-    static async getPublicVotesLog(req, res, next) {
+    static getPublicVotesLog(req, res, next) {
         try {
-            const Vote = require('../models/Vote');
-
-            // Получаем все голоса. VK-данные (ФИО, фото, ссылка) уже закэшированы
-            // в БД при голосовании — VK API здесь НЕ дёргаем (защита от rate-limit).
-            const allVotes = Vote.getAllWithFullInfo();
-
-            // Группируем голоса по VK ID
-            const groupedVotes = {};
-
-            allVotes.forEach(vote => {
-                if (!groupedVotes[vote.vk_id]) {
-                    groupedVotes[vote.vk_id] = {
-                        vk_id: vote.vk_id,
-                        full_name: vote.full_name,
-                        vk_first_name: vote.vk_first_name || null,
-                        vk_last_name: vote.vk_last_name || null,
-                        vk_photo_url: vote.vk_photo_url || null,
-                        vk_screen_name: vote.vk_screen_name || null,
-                        created_at: vote.created_at, // Дата первого голоса
-                        votes_count: 0,
-                        all_cancelled: true
-                    };
-                }
-
-                groupedVotes[vote.vk_id].votes_count++;
-
-                // Если есть хотя бы один НЕ аннулированный голос - значит не все аннулированы
-                if (!vote.is_cancelled) {
-                    groupedVotes[vote.vk_id].all_cancelled = false;
-                }
-
-                // Берем самую раннюю дату голосования
-                if (new Date(vote.created_at) < new Date(groupedVotes[vote.vk_id].created_at)) {
-                    groupedVotes[vote.vk_id].created_at = vote.created_at;
-                }
-            });
-
-            // Преобразуем в массив и добавляем ID (порядковый номер)
-            const votesArray = Object.values(groupedVotes).map((vote, index) => ({
-                id: index + 1,
-                vk_id: vote.vk_id,
-                full_name: vote.full_name,
-                vk_first_name: vote.vk_first_name,
-                vk_last_name: vote.vk_last_name,
-                vk_photo_url: vote.vk_photo_url,
-                vk_screen_name: vote.vk_screen_name,
-                created_at: vote.created_at,
-                votes_count: vote.votes_count,
-                is_cancelled: vote.all_cancelled ? 1 : 0 // Если ВСЕ голоса аннулированы
-            }));
-
-            // Порядковый номер = хронология голосования:
-            // самый ранний проголосовавший = №1, самый свежий = №N.
-            // (Сортировку для показа новых сверху делает фронтенд по убыванию номера.)
-            votesArray.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-            votesArray.forEach((vote, index) => {
-                vote.id = index + 1;
-            });
-
-            // Конвертируем время в локальную timezone
-            const votesWithLocalTime = convertArrayToLocalTime(votesArray, ['created_at']);
-
-            res.json({
-                success: true,
-                votes: votesWithLocalTime
-            });
-
+            res.json(cachedResponse('publicVotesLog', StatsController.buildPublicVotesLog));
         } catch (error) {
             next(error);
         }
+    }
+
+    static buildPublicVotesLog() {
+        const Vote = require('../models/Vote');
+
+        // Получаем все голоса. VK-данные (ФИО, фото, ссылка) уже закэшированы
+        // в БД при голосовании — VK API здесь НЕ дёргаем (защита от rate-limit).
+        const allVotes = Vote.getAllWithFullInfo();
+
+        // Группируем голоса по VK ID
+        const groupedVotes = {};
+
+        allVotes.forEach(vote => {
+            if (!groupedVotes[vote.vk_id]) {
+                groupedVotes[vote.vk_id] = {
+                    vk_id: vote.vk_id,
+                    full_name: vote.full_name,
+                    vk_first_name: vote.vk_first_name || null,
+                    vk_last_name: vote.vk_last_name || null,
+                    vk_photo_url: vote.vk_photo_url || null,
+                    vk_screen_name: vote.vk_screen_name || null,
+                    created_at: vote.created_at, // Дата первого голоса
+                    votes_count: 0,
+                    all_cancelled: true
+                };
+            }
+
+            groupedVotes[vote.vk_id].votes_count++;
+
+            // Если есть хотя бы один НЕ аннулированный голос - значит не все аннулированы
+            if (!vote.is_cancelled) {
+                groupedVotes[vote.vk_id].all_cancelled = false;
+            }
+
+            // Берем самую раннюю дату голосования
+            if (new Date(vote.created_at) < new Date(groupedVotes[vote.vk_id].created_at)) {
+                groupedVotes[vote.vk_id].created_at = vote.created_at;
+            }
+        });
+
+        // Преобразуем в массив и добавляем ID (порядковый номер)
+        const votesArray = Object.values(groupedVotes).map((vote, index) => ({
+            id: index + 1,
+            vk_id: vote.vk_id,
+            full_name: vote.full_name,
+            vk_first_name: vote.vk_first_name,
+            vk_last_name: vote.vk_last_name,
+            vk_photo_url: vote.vk_photo_url,
+            vk_screen_name: vote.vk_screen_name,
+            created_at: vote.created_at,
+            votes_count: vote.votes_count,
+            is_cancelled: vote.all_cancelled ? 1 : 0 // Если ВСЕ голоса аннулированы
+        }));
+
+        // Порядковый номер = хронология голосования:
+        // самый ранний проголосовавший = №1, самый свежий = №N.
+        // (Сортировку для показа новых сверху делает фронтенд по убыванию номера.)
+        votesArray.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        votesArray.forEach((vote, index) => {
+            vote.id = index + 1;
+        });
+
+        // Конвертируем время в локальную timezone
+        const votesWithLocalTime = convertArrayToLocalTime(votesArray, ['created_at']);
+
+        return {
+            success: true,
+            votes: votesWithLocalTime
+        };
     }
 
     // Публичная проверка голоса по псевдониму.
